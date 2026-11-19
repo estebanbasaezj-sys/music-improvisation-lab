@@ -24,6 +24,8 @@ describe('repertorio', () => {
     for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{11}$/);
     expect(new Set(ids).size).toBe(ids.length);
     for (const t of TUNES) expect(t.recording.youtube.length, t.title).toBeGreaterThan(0);
+    // al menos dos tercios de los temas tienen un video oficial que se puede ver dentro de la app
+    expect(TUNES.filter((t) => t.recording.youtube.some((v) => v.embed)).length).toBeGreaterThanOrEqual(20);
   });
   it('solo los temas tradicionales traen melodía real, y esa melodía encaja con su armonía', () => {
     for (const t of TUNES) {

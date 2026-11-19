@@ -795,3 +795,7 @@ button.level-head { width: 100%; border: none; font: inherit; text-align: left; 
 .np-stop:active { transform: translateY(2px); border-bottom-width: 2px; }
 @media (max-width: 820px) { .now-playing { bottom: calc(80px + env(safe-area-inset-bottom)); } .np-stop kbd { display: none; } }
 .lesson-page ~ .now-playing, main.focus ~ .now-playing { bottom: 96px; }
+.yt-alt { font-size: .9rem; }
+.yt-alt summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+.yt-ctl { margin-top: .2rem; }
+a.yt-poster.ext { text-decoration: none; }

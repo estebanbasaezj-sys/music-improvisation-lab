@@ -19,8 +19,12 @@ export interface Recording {
   artist: string;
   album: string;
   year: number;
-  /** ids de YouTube en orden de preferencia (todos verificados) y el título/canal que devolvió YouTube */
-  youtube: { id: string; title: string; channel: string }[];
+  /**
+   * Videos oficiales en orden de preferencia, con el título y canal que devolvió YouTube. `embed: false`
+   * cuando el sello no permite reproducirlo dentro de otras páginas (error 150 del reproductor): solo se
+   * ofrece abrirlo en YouTube.
+   */
+  youtube: { id: string; title: string; channel: string; embed: boolean; note?: string }[];
 }
 
 export type TuneTag = 'blues' | 'standard' | 'bebop' | 'modal' | 'latin' | 'balada' | 'funk' | 'rhythm changes' | 'tradicional' | 'menor';
@@ -60,7 +64,9 @@ const AABA = (n = 8) => [
   { label: 'B', fromBar: 2 * n, toBar: 3 * n - 1 }, { label: 'A', fromBar: 3 * n, toBar: 4 * n - 1 },
 ];
 const BLUES12 = [{ label: 'Blues (12)', fromBar: 0, toBar: 11 }];
-const yt = (id: string, title: string, channel: string) => ({ id, title, channel });
+const yt = (id: string, title: string, channel: string) => ({ id, title, channel, embed: false });
+/** video oficial que SÍ se puede reproducir dentro de la app (comprobado con el reproductor insertado) */
+const ytIn = (id: string, title: string, channel: string, note?: string) => ({ id, title, channel, embed: true, note });
 
 export const TUNES: Tune[] = [
   // ------------------------------------------------------------------ blues
@@ -70,7 +76,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['blues', 'bebop'], classicFor: ['sax'],
     about: 'Un riff de blues de Charlie Parker: la puerta de entrada al bebop. Ideal para aprender a mezclar escala blues y notas del acorde.',
     tips: ['Compases 1–4: escala blues de Fa; en el compás 5 apunta a la 3ª de Bb7 (Re).', 'En Am7–D7 (compás 8) marca el Fa♯ (3ª de D7): es el sonido que lleva a Gm7.', 'Copia la idea del riff: una frase corta repetida con pequeñas variaciones.'],
-    recording: { artist: 'Charlie Parker', album: "Now's the Time (Savoy)", year: 1945, youtube: [yt('0f3zsTtj2Sg', "Charlie Parker - Now's The Time (Official Audio)", 'Miles Davis')] },
+    recording: { artist: 'Charlie Parker', album: "Now's the Time (Savoy)", year: 1945, youtube: [ytIn('0f3zsTtj2Sg', "Charlie Parker - Now's The Time (Official Audio)", 'Miles Davis')] },
   },
   {
     id: 'billies-bounce', title: "Billie's Bounce", composer: 'Charlie Parker', year: 1945, key: 'F', style: 'swing', tempo: 170, practiceTempo: 110,
@@ -78,7 +84,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['blues', 'bebop'], classicFor: ['sax'],
     about: 'El blues de Parker con los cambios típicos del bebop: ii-V hacia el IV, disminuido de paso y turnaround.',
     tips: ['Bdim7 (compás 6): arpegio disminuido desde la 3ª de Bb7 = sonido de Bb7♭9.', 'Turnaround F7–D7–Gm7–C7: practica solo las notas guía (La–Fa♯–Fa–Mi).', 'Alterna 2 compases de frase y 2 de silencio para escuchar la base.'],
-    recording: { artist: 'Charlie Parker', album: 'Birdsong (comp.)', year: 1945, youtube: [yt('89jYv-h7OJA', "Charlie Parker - Billie's Bounce (Official Audio)", 'Miles Davis'), yt('ZsH8tFtRoxE', "Billie's Bounce (Original)", 'Charlie Parker - Topic')] },
+    recording: { artist: 'Charlie Parker', album: 'Birdsong (comp.)', year: 1945, youtube: [ytIn('89jYv-h7OJA', "Charlie Parker - Billie's Bounce (Official Audio)", 'Miles Davis'), yt('ZsH8tFtRoxE', "Billie's Bounce (Original)", 'Charlie Parker - Topic')] },
   },
   {
     id: 'bags-groove', title: "Bags' Groove", composer: 'Milt Jackson', year: 1952, key: 'F', style: 'swing', tempo: 140, practiceTempo: 100,
@@ -86,7 +92,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['blues'], classicFor: ['piano', 'guitar'],
     about: 'Blues medio y relajado. En la grabación de 1954 tocan Miles Davis, Milt Jackson (vibráfono) y Thelonious Monk (piano).',
     tips: ['Tempo cómodo para trabajar el espacio: frases de 2 compases y respuestas.', 'Pianistas y guitarristas: comping en 2 y 4 con shells; deja huecos para el solista.', 'Usa la 6ª (Re) sobre F7 para un sonido más dulce que la escala blues.'],
-    recording: { artist: 'Miles Davis', album: "Bags' Groove", year: 1957, youtube: [yt('qsXPmlOSzlw', "Miles Davis - Bags' Groove (Take 1) (Official Audio)", 'Miles Davis'), yt('LEBNm8HJQ_g', "Miles Davis Sextet - Bags' Groove (Take 2) (Official Audio)", 'Miles Davis')] },
+    recording: { artist: 'Miles Davis', album: "Bags' Groove", year: 1957, youtube: [ytIn('qsXPmlOSzlw', "Miles Davis - Bags' Groove (Take 1) (Official Audio)", 'Miles Davis'), ytIn('LEBNm8HJQ_g', "Miles Davis Sextet - Bags' Groove (Take 2) (Official Audio)", 'Miles Davis')] },
   },
   {
     id: 'straight-no-chaser', title: 'Straight, No Chaser', composer: 'Thelonious Monk', year: 1951, key: 'F', style: 'swing', tempo: 180, practiceTempo: 110,
@@ -102,7 +108,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['blues'], classicFor: ['sax'],
     about: 'Blues en Si♭ (la tonalidad de los vientos). En la grabación original Rollins y Coltrane intercambian solos de tenor.',
     tips: ['Saxo tenor: en escrito es un blues en Do; aprende el arpegio de C7 y F7 escritos.', 'Practica «trading fours»: 4 compases tocas tú, 4 compases deja sonar la batería sola (mezclador → solo batería).'],
-    recording: { artist: 'Sonny Rollins Quartet (con John Coltrane)', album: 'Tenor Madness', year: 1956, youtube: [yt('WpN1dt7n_jw', 'Sonny Rollins Quartet - Tenor Madness (Official Audio)', 'Sonny Rollins')] },
+    recording: { artist: 'Sonny Rollins Quartet (con John Coltrane)', album: 'Tenor Madness', year: 1956, youtube: [ytIn('WpN1dt7n_jw', 'Sonny Rollins Quartet - Tenor Madness (Official Audio)', 'Sonny Rollins')] },
   },
   {
     id: 'c-jam-blues', title: 'C Jam Blues', composer: 'Duke Ellington', year: 1942, key: 'C', style: 'swing', tempo: 160, practiceTempo: 100,
@@ -118,7 +124,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['blues'], classicFor: ['piano'],
     about: 'Blues de Monk con un disminuido de paso (Edim7) que le da su color. Aquí, la versión de piano solo.',
     tips: ['Edim7 entre Eb7 y Bb7: toca su arpegio (Mi–Sol–Si♭–Re♭) como enlace cromático.', 'Imita el humor de Monk: notas repetidas, silencios largos y segundas menores.'],
-    recording: { artist: 'Thelonious Monk', album: 'Thelonious Alone in San Francisco', year: 1959, youtube: [yt('x8qAmm9Zj60', 'Blue Monk (Remastered 2026)', 'Thelonious Monk - Topic'), yt('gu4aVkgTmUo', 'Blue Monk (Remastered)', 'Thelonious Monk - Topic')] },
+    recording: { artist: 'Thelonious Monk', album: 'Thelonious Alone in San Francisco', year: 1959, youtube: [ytIn('KY1ijOi1Mqw', 'Thelonious Monk - Blue Monk | Film: Jazz On A Summers Day (1959)', 'New Wave Films', 'En vivo en el festival de Newport, 1958 (película «Jazz on a Summer\'s Day»)'), yt('x8qAmm9Zj60', 'Blue Monk (Remastered 2026)', 'Thelonious Monk - Topic'), yt('gu4aVkgTmUo', 'Blue Monk (Remastered)', 'Thelonious Monk - Topic')] },
   },
   {
     id: 'mr-pc', title: 'Mr. P.C.', composer: 'John Coltrane', year: 1959, key: 'Cm', style: 'swing', tempo: 250, practiceTempo: 120,
@@ -126,7 +132,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['blues', 'menor'], classicFor: ['sax'],
     about: 'Blues menor rápido dedicado al contrabajista Paul Chambers. La base perfecta para el dórico y la pentatónica menor.',
     tips: ['Compases 1–8: Do dórico o pentatónica menor de Do.', 'Ab7 → G7: baja por semitono buscando la 3ª de G7 (Si).', 'Empieza a 120 y sube 10 bpm cada semana.'],
-    recording: { artist: 'John Coltrane', album: 'Giant Steps', year: 1960, youtube: [yt('PttNMqbNMOI', 'Mr. P.C. (2020 Remaster)', 'John Coltrane - Topic'), yt('oHDsywpCHj4', 'Mr. P.C. (Mono)', 'John Coltrane - Topic')] },
+    recording: { artist: 'John Coltrane', album: 'Giant Steps', year: 1960, youtube: [ytIn('wshER0xNhtg', "Mr PC by John Coltrane from 'The Paris Concert'", 'John Coltrane', 'Versión en vivo (París, 1962), canal oficial de John Coltrane'), yt('PttNMqbNMOI', 'Mr. P.C. (2020 Remaster)', 'John Coltrane - Topic'), yt('oHDsywpCHj4', 'Mr. P.C. (Mono)', 'John Coltrane - Topic')] },
   },
   {
     id: 'watermelon-man', title: 'Watermelon Man', composer: 'Herbie Hancock', year: 1962, key: 'F', style: 'funk', tempo: 130, practiceTempo: 100,
@@ -135,7 +141,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['blues', 'funk'], classicFor: ['piano', 'sax'],
     about: 'Blues de 16 compases con groove de soul jazz en corcheas rectas. La sección C7–Bb7 se repite tres veces.',
     tips: ['Corcheas rectas (sin swing): piensa en funk, no en walking.', 'Pentatónica menor de Fa con la 3ª mayor (La) como nota de color.', 'En C7–Bb7 usa notas comunes: Mi→Re (3ª de C7 → 3ª de Bb7).'],
-    recording: { artist: 'Herbie Hancock', album: 'Takin\' Off', year: 1962, youtube: [yt('2t0n4VQrOzE', 'Watermelon Man', 'Herbie Hancock - Topic')] },
+    recording: { artist: 'Herbie Hancock', album: 'Takin\' Off', year: 1962, youtube: [ytIn('FoekQZ1Qqlo', 'Watermelon Man - Herbie Hancock | The Midnight Special', 'The Midnight Special', 'Versión en vivo de Herbie Hancock (programa The Midnight Special)'), yt('2t0n4VQrOzE', 'Watermelon Man', 'Herbie Hancock - Topic')] },
   },
   // ------------------------------------------------------------------ standards
   {
@@ -164,7 +170,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['standard'], classicFor: ['sax', 'piano'],
     about: 'Ciclo de quintas casi completo (Am–Dm–G–C–F–Bø–E): la escuela del movimiento armónico por cuartas.',
     tips: ['Practica la línea de 3ªs y 7ªs: cada nota guía baja medio tono o se mantiene.', 'Bm7b5–E7–Am7 es un ii-V-i menor dentro de Do mayor.'],
-    recording: { artist: 'Frank Sinatra con Count Basie', album: 'It Might as Well Be Swing', year: 1964, youtube: [yt('ZEcqHA7dbwM', 'Fly Me To The Moon (2008 Remastered)', 'Frank Sinatra - Topic')] },
+    recording: { artist: 'Frank Sinatra con Count Basie', album: 'It Might as Well Be Swing', year: 1964, youtube: [ytIn('Y2rDb4Ur2dw', 'Frank Sinatra - Fly Me To The Moon (Live At The Kiel Opera House, 1965)', 'Frank Sinatra', 'En vivo, 1965, canal oficial de Frank Sinatra'), yt('ZEcqHA7dbwM', 'Fly Me To The Moon (2008 Remastered)', 'Frank Sinatra - Topic')] },
   },
   {
     id: 'satin-doll', title: 'Satin Doll', composer: 'Duke Ellington, Billy Strayhorn', year: 1953, key: 'C', style: 'swing', tempo: 120, practiceTempo: 100,
@@ -172,7 +178,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['standard'], classicFor: ['guitar', 'piano'],
     about: 'ii-V que suben por tonos (Dm7–G7, Em7–A7…): el mejor ejercicio para tocar ii-V en varias tonalidades.',
     tips: ['Toca la misma frase de ii-V y trasládala un tono arriba.', 'Puente: dos ii-V largos (Gm7–C7 y Am7–D7) para frases más largas.'],
-    recording: { artist: 'Duke Ellington', album: 'Satin Doll', year: 1953, youtube: [yt('KNSvjq24QAI', 'Satin Doll', 'Duke Ellington - Topic')] },
+    recording: { artist: 'Duke Ellington', album: 'Satin Doll', year: 1953, youtube: [ytIn('wTFPV1pk654', 'Duke Ellington - Satin Doll (1962)  [official video]', 'StoryvilleRecords', 'Duke Ellington y su orquesta, 1962 (video oficial de Storyville Records)'), ytIn('BlBp7YEZgv0', 'Duke Ellington "Satin Doll & Things Ain\'t What They Used To Be" on The Ed Sullivan Show', 'The Ed Sullivan Show'), yt('KNSvjq24QAI', 'Satin Doll', 'Duke Ellington - Topic')] },
   },
   {
     id: 'take-the-a-train', title: 'Take the "A" Train', composer: 'Billy Strayhorn', year: 1939, key: 'C', style: 'swing', tempo: 170, practiceTempo: 110,
@@ -181,7 +187,7 @@ export const TUNES: Tune[] = [
     sections: AABA(), level: 1, tags: ['standard'], classicFor: ['piano', 'sax'],
     about: 'El tema de Ellington. El D7 (II7) con su 4ª aumentada (Sol♯) es el sonido característico.',
     tips: ['Sobre D7 prueba Re lidio dominante: el Sol♯ (#11) es la nota del tema.', 'Puente en Fmaj7: cuatro compases para frases largas y relajadas.'],
-    recording: { artist: 'Duke Ellington and His Famous Orchestra', album: 'Take the "A" Train', year: 1941, youtube: [yt('r2G1fKYFgVU', 'Duke Ellington and His Famous Orchestra - Take the "A" Train (Audio)', 'DukeEllingtonVEVO')] },
+    recording: { artist: 'Duke Ellington and His Famous Orchestra', album: 'Take the "A" Train', year: 1941, youtube: [ytIn('D6mFGy4g_n8', 'Duke Ellington and his Orchestra - Take The A Train (1962) [Official Video]', 'StoryvilleRecords', 'Duke Ellington y su orquesta, 1962 (video oficial de Storyville Records)'), yt('r2G1fKYFgVU', 'Duke Ellington and His Famous Orchestra - Take the "A" Train (Audio)', 'DukeEllingtonVEVO')] },
   },
   {
     id: 'never-another-you', title: 'There Will Never Be Another You', composer: 'Harry Warren', year: 1942, key: 'Eb', style: 'swing', tempo: 160, practiceTempo: 120,
@@ -199,7 +205,7 @@ export const TUNES: Tune[] = [
     level: 3, tags: ['standard'], classicFor: ['piano', 'sax', 'guitar'],
     about: 'Modula por cuartas a cinco tonalidades: el examen de armonía del jazz.',
     tips: ['Localiza las tonalidades: La♭, Do, Mi♭, Sol, Mi y vuelta a La♭.', 'G7 → Cmaj7 y D7 → Gmaj7: practica solo esas llegadas a la 3ª.'],
-    recording: { artist: 'Bill Evans Trio', album: 'All the Things You Are (album version)', year: 1962, youtube: [yt('XJocj5T9qIY', 'All The Things You Are (Album Version)', 'Bill Evans Trio - Topic')] },
+    recording: { artist: 'Bill Evans Trio', album: 'All the Things You Are (album version)', year: 1962, youtube: [ytIn('DiDt5LNXsMY', 'Shai Maestro & Chris Potter - All The Things You Are', 'Shai Maestro', 'Versión actual de Shai Maestro (piano) y Chris Potter (saxo tenor), canal oficial'), yt('XJocj5T9qIY', 'All The Things You Are (Album Version)', 'Bill Evans Trio - Topic')] },
   },
   {
     id: 'stella', title: 'Stella by Starlight', composer: 'Victor Young', year: 1944, key: 'Bb', style: 'swing', tempo: 140, practiceTempo: 100,
@@ -219,7 +225,7 @@ export const TUNES: Tune[] = [
     level: 3, tags: ['standard', 'bebop'], classicFor: ['sax'],
     about: 'Tema bebop corto con el famoso turnaround «Lady Bird» (Cmaj7–Ebmaj7–Abmaj7–Dbmaj7).',
     tips: ['Fm7–Bb7 en Do mayor: «iv–bVII», préstamo del modo menor.', 'Turnaround: los cuatro maj7 bajan por terceras/cuartas; toca la 3ª de cada uno.'],
-    recording: { artist: 'Fats Navarro y Tadd Dameron', album: 'Fats Navarro Memorial Album', year: 1948, youtube: [yt('iWQHoLqB8U8', 'Lady Bird', 'Fats Navarro - Topic'), yt('N94naN1RL_4', 'Lady Bird (Remastered)', 'Fats Navarro - Topic')] },
+    recording: { artist: 'Fats Navarro y Tadd Dameron', album: 'Fats Navarro Memorial Album', year: 1948, youtube: [ytIn('_cIGwusTEw0', 'Lady Bird - Chad LB Standard Sessions #21 (Holger Marjamaa, Ben Tiberio, John Cavalier)', 'Chad LB', 'Versión actual de Chad LB (saxo tenor), canal oficial'), yt('iWQHoLqB8U8', 'Lady Bird', 'Fats Navarro - Topic'), yt('N94naN1RL_4', 'Lady Bird (Remastered)', 'Fats Navarro - Topic')] },
   },
   {
     id: 'tune-up', title: 'Tune Up', composer: 'Miles Davis (atrib.)', year: 1953, key: 'D', style: 'swing', tempo: 200, practiceTempo: 110,
@@ -229,7 +235,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['standard', 'bebop'], classicFor: ['sax', 'guitar'],
     about: 'Tres ii-V-I que bajan por tonos (Re, Do, Si♭): el ejercicio de ii-V-I convertido en tema.',
     tips: ['Aprende UNA frase de ii-V-I y tócala en Re, Do y Si♭.', 'Cada I dura 2 compases: apóyate en la 3ª y la 7ª mayor.'],
-    recording: { artist: 'Miles Davis', album: 'Blue Haze', year: 1953, youtube: [yt('1ezOYc3UEts', 'Miles Davis - Tune Up (Official Audio)', 'Miles Davis'), yt('8KiM-yxrWGw', 'The Miles Davis Quintet - Tune-Up / When Lights Are Low (Prestige Records/Official Audio)', 'Prestige Records')] },
+    recording: { artist: 'Miles Davis', album: 'Blue Haze', year: 1953, youtube: [ytIn('1ezOYc3UEts', 'Miles Davis - Tune Up (Official Audio)', 'Miles Davis'), ytIn('8KiM-yxrWGw', 'The Miles Davis Quintet - Tune-Up / When Lights Are Low (Prestige Records/Official Audio)', 'Prestige Records')] },
   },
   {
     id: 'solar', title: 'Solar', composer: 'Miles Davis (atrib.)', year: 1954, key: 'Cm', style: 'swing', tempo: 180, practiceTempo: 110,
@@ -239,7 +245,7 @@ export const TUNES: Tune[] = [
     level: 3, tags: ['standard', 'menor'], classicFor: ['guitar', 'sax'],
     about: 'Doce compases que no se quedan quietos: ii-V hacia Fa, Mi♭ y Re♭ y vuelta a Do menor.',
     tips: ['CmMaj7: menor melódica de Do (la 7ª mayor, Si, es la nota clave).', 'Cada ii-V cambia de tonalidad: piensa en tres «mini temas» enlazados.'],
-    recording: { artist: 'Miles Davis', album: 'Walkin\'', year: 1954, youtube: [yt('GmdDg_0hqq0', 'Solar (Remastered 2025)', 'Miles Davis - Topic'), yt('CwycRa_F-KY', 'Solar (Rudy Van Gelder Remaster)', 'Miles Davis - Topic')] },
+    recording: { artist: 'Miles Davis', album: 'Walkin\'', year: 1954, youtube: [ytIn('maxpKVoXo58', "Miles Davis - Solar (Official Visualizer) - from MILES '54: The Prestige Recordings", 'Miles Davis'), yt('GmdDg_0hqq0', 'Solar (Remastered 2025)', 'Miles Davis - Topic'), yt('CwycRa_F-KY', 'Solar (Rudy Van Gelder Remaster)', 'Miles Davis - Topic')] },
   },
   {
     id: 'oleo', title: 'Oleo', composer: 'Sonny Rollins', year: 1954, key: 'Bb', style: 'swing', tempo: 240, practiceTempo: 120,
@@ -248,7 +254,7 @@ export const TUNES: Tune[] = [
     sections: AABA(), level: 3, tags: ['rhythm changes', 'bebop'], classicFor: ['sax'],
     about: 'Los «rhythm changes» (la armonía de I Got Rhythm) son, tras el blues, la forma más tocada del jazz.',
     tips: ['Secciones A: piensa en Si♭ mayor con ii-V rápidos; empieza tocando solo Si♭ mayor pentatónica.', 'Puente: dominantes por quintas (D7–G7–C7–F7), dos compases cada uno: arpegios y notas guía.'],
-    recording: { artist: 'Miles Davis (con Sonny Rollins)', album: 'Bags\' Groove', year: 1954, youtube: [yt('AebiaEIAJFc', 'Oleo (RVG Remastered 2008)', 'Miles Davis - Topic')] },
+    recording: { artist: 'Miles Davis (con Sonny Rollins)', album: 'Bags\' Groove', year: 1954, youtube: [ytIn('hwiHf2blSa0', "Miles Davis - Oleo (Official Visualizer) - from MILES '54: The Prestige Recordings", 'Miles Davis'), ytIn('x_cQHeWwSBQ', "The Miles Davis Quintet -  Oleo from Relaxin' With The Miles Davis Quintet", 'Miles Davis'), ytIn('aflCJy8NY1c', "Oleo by Sonny Rollins from 'The Complete Prestige Recordings' Disc 3", 'Sonny Rollins'), yt('AebiaEIAJFc', 'Oleo (RVG Remastered 2008)', 'Miles Davis - Topic')] },
   },
   {
     id: 'misty', title: 'Misty', composer: 'Erroll Garner', year: 1954, key: 'Eb', style: 'ballad', tempo: 66, practiceTempo: 66,
@@ -256,7 +262,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['balada', 'standard'], classicFor: ['piano'],
     about: 'La balada de Garner: ii-V hacia el IV y un puente que modula. Grabación de referencia: el propio Garner al piano.',
     tips: ['En balada cada nota cuenta: frases largas, notas largas, dinámica.', 'Prueba doble tiempo (corcheas rápidas) solo en un ii-V y vuelve a la calma.'],
-    recording: { artist: 'Erroll Garner', album: 'Contrasts', year: 1955, youtube: [yt('w2fQ5TOZ_Dg', 'Erroll Garner - Misty (Official Audio)', 'Mack Avenue')] },
+    recording: { artist: 'Erroll Garner', album: 'Contrasts', year: 1955, youtube: [ytIn('w2fQ5TOZ_Dg', 'Erroll Garner - Misty (Official Audio)', 'Mack Avenue')] },
   },
   {
     id: 'summertime', title: 'Summertime', composer: 'George Gershwin', year: 1935, key: 'Am', style: 'swing', tempo: 90, practiceTempo: 90,
@@ -278,7 +284,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['modal'], classicFor: ['sax', 'piano', 'guitar'],
     about: 'El tema que definió el jazz modal (Kind of Blue): 16 compases de Re dórico, 8 de Mi♭ dórico y vuelta.',
     tips: ['Re dórico = notas blancas del piano desde Re. El Si natural es la nota característica.', 'Para cambiar a Mi♭ dórico basta con subir todo medio tono: practica ese salto.', 'Piano y guitarra: voicings por cuartas (Mi–La–Re–Sol–Si).'],
-    recording: { artist: 'Miles Davis', album: 'Kind of Blue', year: 1959, youtube: [yt('ylXk1LBvIqU', 'Miles Davis - So What (Audio) (Official Audio)', 'MilesDavisVEVO')] },
+    recording: { artist: 'Miles Davis', album: 'Kind of Blue', year: 1959, youtube: [ytIn('1UBKkEunz1k', 'So What - Jazz Orchestra of the Concertgebouw (Miles Davis) - Live at the Royal Concertgebouw', 'Jazz Orchestra of the Concertgebouw', 'Versión en vivo de la Jazz Orchestra of the Concertgebouw (canal oficial); la grabación de Miles no permite verse dentro de otras apps'), yt('ylXk1LBvIqU', 'Miles Davis - So What (Audio) (Official Audio)', 'MilesDavisVEVO')] },
   },
   {
     id: 'impressions', title: 'Impressions', composer: 'John Coltrane', year: 1961, key: 'Dm', style: 'swing', tempo: 280, practiceTempo: 140,
@@ -288,7 +294,7 @@ export const TUNES: Tune[] = [
     level: 3, tags: ['modal'], classicFor: ['sax'],
     about: 'La misma forma que So What, pero rápido: Coltrane explora pentatónicas, patrones y cuartas.',
     tips: ['Pentatónicas sobre Re dórico: Re menor, Mi menor y La menor pentatónica suenan «dentro».', 'Patrones de 4 notas (1-2-3-5) desplazados por la escala.'],
-    recording: { artist: 'John Coltrane', album: 'Impressions', year: 1963, youtube: [yt('VT8MeD_FVXA', 'John Coltrane - Impressions (Official Audio)', 'John Coltrane')] },
+    recording: { artist: 'John Coltrane', album: 'Impressions', year: 1963, youtube: [ytIn('VT8MeD_FVXA', 'John Coltrane - Impressions (Official Audio)', 'John Coltrane')] },
   },
   {
     id: 'maiden-voyage', title: 'Maiden Voyage', composer: 'Herbie Hancock', year: 1965, key: 'D', style: 'funk', tempo: 120, practiceTempo: 100,
@@ -298,7 +304,7 @@ export const TUNES: Tune[] = [
     about: 'Cuatro acordes suspendidos con un ostinato rítmico: espacio para pensar en color, no en cambios rápidos.',
     tips: ['Sobre cada 7sus4 usa el mixolidio (o el dórico de la 5ª: D7sus4 = La dórico).', 'Piano: voicing «Am7 sobre Re» para D7sus4.'],
     versionNote: 'Groove en corcheas rectas; la base funk de la app es una aproximación al ostinato original.',
-    recording: { artist: 'Herbie Hancock', album: 'Maiden Voyage', year: 1965, youtube: [yt('EWC5x9G45yo', 'Maiden Voyage (Remastered 1999/Rudy Van Gelder Edition)', 'Herbie Hancock - Topic')] },
+    recording: { artist: 'Herbie Hancock', album: 'Maiden Voyage', year: 1965, youtube: [ytIn('G3in_Ewqu_g', 'Herbie Hancock, Ravi Coltrane, Zakir Hussain: "Maiden Voyage" | International Jazz Day 2022', 'International Jazz Day', 'Herbie Hancock en vivo, 2022 (International Jazz Day)'), yt('EWC5x9G45yo', 'Maiden Voyage (Remastered 1999/Rudy Van Gelder Edition)', 'Herbie Hancock - Topic')] },
   },
   {
     id: 'cantaloupe-island', title: 'Cantaloupe Island', composer: 'Herbie Hancock', year: 1964, key: 'Fm', style: 'funk', tempo: 112, practiceTempo: 100,
@@ -308,7 +314,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['modal', 'funk'], classicFor: ['piano', 'sax', 'guitar'],
     about: 'Tres acordes de 4 compases y un groove irresistible: el mejor primer tema modal.',
     tips: ['Fm7: Fa dórico o pentatónica menor de Fa. Db7: Re♭ mixolidio. Dm7: Re dórico.', 'Practica el paso Db7 → Dm7: sube medio tono todo lo que tocas.'],
-    recording: { artist: 'Herbie Hancock', album: 'Empyrean Isles', year: 1964, youtube: [yt('otFVFLtRF_s', 'Cantaloupe Island (Remastered 1999/Rudy Van Gelder Edition)', 'Herbie Hancock - Topic')] },
+    recording: { artist: 'Herbie Hancock', album: 'Empyrean Isles', year: 1964, youtube: [ytIn('5KNL0_sis1k', '“Cantaloupe Island” (Live, 1990)', 'Herbie Hancock', 'En vivo, 1990, canal oficial de Herbie Hancock'), ytIn('Yjue2puI--Y', 'Herbie Hancock  - Cantaloupe Island | Glastonbury 2022', 'BBC Music'), yt('otFVFLtRF_s', 'Cantaloupe Island (Remastered 1999/Rudy Van Gelder Edition)', 'Herbie Hancock - Topic')] },
   },
   // ------------------------------------------------------------------ latin
   {
@@ -317,7 +323,7 @@ export const TUNES: Tune[] = [
     level: 1, tags: ['latin', 'menor'], classicFor: ['sax', 'guitar', 'piano'],
     about: 'Bossa menor con una modulación a Re♭: ii-V-i menor y ii-V-I mayor en el mismo tema.',
     tips: ['Compases 1–8: Do menor (dórico/eólico); 9–12: Re♭ mayor.', 'Practica la llegada a Dbmaj7: Fa (3ª) desde Mi♭ o Sol♭.'],
-    recording: { artist: 'Joe Henderson', album: 'Page One', year: 1963, youtube: [yt('EUxv3AAaK_Y', 'Blue Bossa (Remastered)', 'Joe Henderson Quintet - Topic')] },
+    recording: { artist: 'Joe Henderson', album: 'Page One', year: 1963, youtube: [ytIn('5tG1HRBuhtM', 'Joe Henderson - Blue Bossa (Live in Tokyo, 1971) (Official Audio)', 'Joe Henderson', 'En vivo en Tokio, 1971, canal oficial de Joe Henderson'), ytIn('6ugsYcyc7-g', 'Joe Henderson - Blue Bossa - Live in Hermosa Beach, CA, 1970 (Official Audio)', 'Joe Henderson'), yt('EUxv3AAaK_Y', 'Blue Bossa (Remastered)', 'Joe Henderson Quintet - Topic')] },
   },
   {
     id: 'girl-from-ipanema', title: 'The Girl from Ipanema', composer: 'Antônio Carlos Jobim', year: 1962, key: 'F', style: 'bossa', tempo: 130, practiceTempo: 110,
@@ -327,7 +333,7 @@ export const TUNES: Tune[] = [
     level: 2, tags: ['latin'], classicFor: ['sax', 'guitar'],
     about: 'La bossa más famosa. Stan Getz (saxo tenor) y João Gilberto (guitarra) en la grabación de referencia.',
     tips: ['G7 es un II7 (lidio dominante); Gb7 es la sustitución tritonal de C7.', 'Puente: modula a Sol♭ y vuelve por ii-V; toca primero solo las fundamentales para orientarte.'],
-    recording: { artist: 'Stan Getz y João Gilberto', album: 'Getz/Gilberto', year: 1964, youtube: [yt('N-TKOh0zsvU', 'The Girl From Ipanema', 'Stan Getz - Topic')] },
+    recording: { artist: 'Stan Getz y João Gilberto', album: 'Getz/Gilberto', year: 1964, youtube: [ytIn('s61-e29Vr6Q', 'Stan Getz feat. Astrud Gilberto - The Girl From Ipanema (Official Video)', 'Verve Records'), yt('N-TKOh0zsvU', 'The Girl From Ipanema', 'Stan Getz - Topic')] },
   },
   {
     id: 'manha-de-carnaval', title: 'Manhã de Carnaval', composer: 'Luiz Bonfá', year: 1959, key: 'Am', style: 'bossa', tempo: 120, practiceTempo: 100,
@@ -349,7 +355,7 @@ export const TUNES: Tune[] = [
     about: 'Groove brasileño de Horace Silver con una bajada Eb7–Db7–C7 muy fácil de escuchar.',
     tips: ['Pentatónica menor de Fa sirve casi todo el tema.', 'Db7 → C7: baja medio tono y apunta a Mi (3ª de C7) para volver a Fm.'],
     versionNote: 'Cifrado de práctica; contrasta la sección B con tu edición.',
-    recording: { artist: 'Horace Silver Quintet', album: 'Song for My Father', year: 1965, youtube: [yt('mKf1x3CALAE', 'Song For My Father', 'Horace Silver - Topic')] },
+    recording: { artist: 'Horace Silver Quintet', album: 'Song for My Father', year: 1965, youtube: [ytIn('XjRLk0mpql0', 'Horace Silver - Song for my Father | WDR Big Band', 'ARD Jazz', 'Versión de la WDR Big Band (canal oficial de ARD)'), yt('mKf1x3CALAE', 'Song For My Father', 'Horace Silver - Topic')] },
   },
   // ------------------------------------------------------------------ tradicional (dominio público)
   {
@@ -364,7 +370,7 @@ export const TUNES: Tune[] = [
       source: 'Melodía tradicional (dominio público), versión simplificada en Fa.',
       notes: 'r:1 F4:1 A4:1 Bb4:1 | C5:4 | r:1 F4:1 A4:1 Bb4:1 | C5:4 | r:1 F4:1 A4:1 Bb4:1 | C5:2 A4:2 | F4:2 A4:2 | G4:4 | r:1 A4:1 A4:1 G4:1 | F4:3 F4:1 | A4:2 C5:2 | C5:2 Bb4:2 | A4:1 Bb4:1 C5:2 | A4:2 F4:2 | G4:4 | F4:4 |',
     },
-    recording: { artist: 'Louis Armstrong and the All-Stars', album: 'When the Saints Go Marching In', year: 1955, youtube: [yt('USpYJB6rdRs', 'When The Saints Go Marching In', 'Louis Armstrong And The All-Stars - Topic')] },
+    recording: { artist: 'Louis Armstrong and the All-Stars', album: 'When the Saints Go Marching In', year: 1955, youtube: [ytIn('2eUzdTF3P2M', 'Louis Armstrong "When The Saints Go Marching In" on The Ed Sullivan Show', 'The Ed Sullivan Show', 'Louis Armstrong en vivo en The Ed Sullivan Show'), yt('USpYJB6rdRs', 'When The Saints Go Marching In', 'Louis Armstrong And The All-Stars - Topic')] },
   },
 ];
 

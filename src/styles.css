@@ -840,3 +840,25 @@ a.yt-poster.ext { text-decoration: none; }
 .table-wrap { overflow-x: auto; }
 .chip.sm { padding: .15rem .5rem; font-size: .78rem; }
 .busy .btn.sm { margin-left: auto; }
+
+/* ---- vista multipista (cada instrumento por separado) ---- */
+.multitrack { margin: .6rem 0; display: flex; flex-direction: column; gap: .4rem; }
+.lanes { display: flex; flex-direction: column; gap: .35rem; }
+.lane { border: 2px solid var(--line); border-left: 6px solid var(--lc); border-radius: 14px; background: var(--card); overflow: hidden; }
+.lane.focus { border-color: var(--lc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--lc) 25%, transparent); }
+.lane.silent .lane-wave { opacity: .45; }
+.lane-head { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .3rem .8rem; padding: .35rem .6rem .45rem; background: color-mix(in srgb, var(--lc) 8%, var(--card)); }
+.lane-title { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.lane-ico { font-size: 1.25rem; }
+.lane-badge { font-size: .72rem; font-weight: 900; color: #fff; background: var(--lc); border-radius: 999px; padding: .05rem .5rem; }
+.lane-ctl { display: flex; align-items: center; gap: .35rem; flex: 1 1 260px; justify-content: flex-end; }
+.lane-ctl input[type=range] { flex: 1; min-width: 90px; max-width: 260px; accent-color: var(--lc); }
+.lane-vol { font-variant-numeric: tabular-nums; font-weight: 800; min-width: 3.4em; text-align: right; font-size: .85rem; }
+.ms { width: 32px; height: 30px; border-radius: 8px; border: 2px solid var(--line); border-bottom-width: 3px; background: var(--bg2); color: var(--text); font: inherit; font-weight: 900; cursor: pointer; padding: 0; }
+.ms.on-m { background: var(--red); border-color: color-mix(in srgb, var(--red) 70%, #000); color: #fff; }
+.ms.on-s { background: #ffc800; border-color: #c98a00; color: #3a2a00; }
+.ms.dl { font-size: .9rem; }
+.lane-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: transparent; }
+.lane-meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--lc), #ffc800 75%, #ff4b4b); transition: width .06s linear; }
+.lane-wave { display: block; width: 100%; height: 48px; cursor: crosshair; touch-action: none; background: color-mix(in srgb, var(--lc) 4%, var(--bg2)); }
+.lane-wave.focus { height: 60px; }

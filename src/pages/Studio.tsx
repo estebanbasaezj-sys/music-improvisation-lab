@@ -23,6 +23,7 @@ import { isEmbedded } from '../recording/pitch';
 import { ImportPanel } from './studio/Import';
 import { Waveform } from './studio/Waveform';
 import { SoloExplanation } from './studio/Explain';
+import { LANE_STYLE, TrackLanes, TrackState } from './studio/Tracks';
 
 const symOf = (c: { root: number; quality: string }) => `${PC_NAMES[c.root]}${c.quality === 'maj' ? '' : c.quality}`;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}.${Math.floor((s % 1) * 10)}`;
@@ -35,7 +36,6 @@ function downloadWav(buf: AudioBuffer, filename: string) {
 }
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-type TrackState = { vol: number; mute: boolean; solo: boolean };
 interface Stems { from: number; to: number; method: 'ia' | 'centro'; tracks: Record<string, AudioBuffer> }
 const TRACK_LABEL: Record<string, string> = { ...STEM_LABEL, lead: '✨ Instrumento realzado', center: 'Centro del estéreo', sides: 'Lados del estéreo', orig: 'Mezcla original' };
 
@@ -66,6 +66,7 @@ export function StudioPage() {
   const [stems, setStems] = useState<Stems | null>(null);
   const [mode, setMode] = useState<'full' | 'stems'>('full');
   const [mixState, setMixState] = useState<Record<string, TrackState>>({});
+  const [focusOverride, setFocusOverride] = useState<string | null>(null); // pista elegida a mano para estudiar
   // edición y reproducción
   const [view, setView] = useState<[number, number]>([0, 1]);
   const [pos, setPos] = useState(0);
@@ -91,7 +92,7 @@ export function StudioPage() {
   const [recs, setRecs] = useState<Recording[]>([]);
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [gpu, setGpu] = useState<boolean | null>(null);
-  const nodes = useRef<{ srcs: AudioBufferSourceNode[]; gains: Record<string, GainNode>; master: GainNode | null }>({ srcs: [], gains: {}, master: null });
+  const nodes = useRef<{ srcs: AudioBufferSourceNode[]; gains: Record<string, GainNode>; master: GainNode | null; analysers: Record<string, AnalyserNode> }>({ srcs: [], gains: {}, master: null, analysers: {} });
   const startInfo = useRef<{ ctxT: number; pos0: number } | null>(null);
   const raf = useRef(0);
 
@@ -106,7 +107,9 @@ export function StudioPage() {
   // ventana de trabajo: canción completa o el fragmento separado
   const win: [number, number] = mode === 'stems' && stems ? [stems.from, stems.to] : [0, orig?.duration ?? 1];
   const tracks: Record<string, AudioBuffer> = mode === 'stems' && stems ? stems.tracks : orig ? { orig } : {};
-  const focus = focusOf(instrument, mode === 'stems' ? stems : null);
+  /** pista a estudiar: la elegida a mano o la que corresponde al instrumento */
+  const focusFor = (st: Stems | null) => (st && focusOverride && st.tracks[focusOverride] ? focusOverride : focusOf(instrument, st));
+  const focus = focusFor(mode === 'stems' ? stems : null);
   const trackIds = Object.keys(tracks).sort((a, b) => (a === focus ? -1 : b === focus ? 1 : 0));
 
   // ------------------------------------------------ velocidad y tono (SoundTouch, por pista)
@@ -131,7 +134,7 @@ export function StudioPage() {
 
   // ------------------------------------------------ carga
   const resetFor = (b: AudioBuffer) => {
-    stop(); setAn(null); setNotes(null); setChordEdits({}); setShowWorkshop(false); setStems(null); setMode('full');
+    stop(); setAn(null); setNotes(null); setChordEdits({}); setShowWorkshop(false); setStems(null); setMode('full'); setFocusOverride(null);
     setOrig(b); setPos(0); setSel(null); setMarkers([]); setView([0, b.duration]); setSpeed(1); setSemi(0); setMixState({});
   };
   const load = async (data: Blob, n: string, src: string) => {
@@ -196,7 +199,7 @@ export function StudioPage() {
   function stop() {
     cancelAnimationFrame(raf.current);
     nodes.current.srcs.forEach((s) => { try { s.stop(); } catch { /* ya parado */ } });
-    nodes.current = { srcs: [], gains: {}, master: null };
+    nodes.current = { srcs: [], gains: {}, master: null, analysers: {} };
     startInfo.current = null;
     setPlaying(false);
     endActivity('studio');
@@ -221,6 +224,7 @@ export function StudioPage() {
     const t0 = c.currentTime + 0.06;
     const srcs: AudioBufferSourceNode[] = [];
     const gains: Record<string, GainNode> = {};
+    const analysers: Record<string, AnalyserNode> = {};
     for (const id of Object.keys(proc)) {
       if (!tracks[id]) continue;
       const s = c.createBufferSource();
@@ -228,13 +232,17 @@ export function StudioPage() {
       const g = c.createGain();
       g.gain.value = effGain(id);
       s.connect(g); g.connect(m);
+      const an = c.createAnalyser();
+      an.fftSize = 256;
+      g.connect(an);
+      analysers[id] = an;
       if (loopOn) { s.loop = true; s.loopStart = (a - ws) / speed; s.loopEnd = (b - ws) / speed; }
       s.start(t0, Math.max(0, (p - ws) / speed));
       srcs.push(s); gains[id] = g;
     }
     if (!srcs.length) return;
     srcs[0].onended = () => { if (nodes.current.srcs[0] === srcs[0]) { setPlaying(false); endActivity('studio'); cancelAnimationFrame(raf.current); } };
-    nodes.current = { srcs, gains, master: m };
+    nodes.current = { srcs, gains, master: m, analysers };
     startInfo.current = { ctxT: t0, pos0: p };
     registerActivity('studio', stopper, `Estudio: ${name || 'audio'}${speed !== 1 ? ` · ${Math.round(speed * 100)} %` : ''}${semi ? ` · ${semi > 0 ? '+' : ''}${semi} st` : ''}${loopOn ? ' · loop' : ''}`);
     setPlaying(true);
@@ -285,9 +293,9 @@ export function StudioPage() {
     try {
       const tr = await separateAudio(orig, a, b, ctx(), { signal: ac.signal, onProgress: (p) => setBusy({ label: label(p), p: p.phase === 'model' ? 0.02 : p.p, cancel: () => ac.abort() }) });
       const st: Stems = { from: a, to: b, method: 'ia', tracks: tr as Record<StemName, AudioBuffer> };
-      setStems(st); setMode('stems'); setView([a, b]); setAn(null); setNotes(null);
+      setStems(st); setMode('stems'); setView([a, b]); setAn(null); setNotes(null); setFocusOverride(null);
       setPos(a); if (sel && (sel[0] < a || sel[1] > b)) setSel(null);
-      applyPreset('front', st);
+      applyPreset('front', st, null);
       setMsg('✔ Instrumentos separados. Usa el mezclador para escuchar solo el instrumento, o todo menos él para tocar encima.');
     } catch (e) {
       if ((e as DOMException).name !== 'AbortError') setErr(`No se pudo separar con IA: ${(e as Error).message}. Prueba con un fragmento más corto, cierra otras pestañas, o usa la separación sin IA.`);
@@ -300,13 +308,14 @@ export function StudioPage() {
     const part = sliceBuffer(orig, a, b, ctx());
     const { center, sides } = midSide(part, ctx());
     const st: Stems = { from: a, to: b, method: 'centro', tracks: { center, sides } };
-    setStems(st); setMode('stems'); setView([a, b]); setAn(null); setNotes(null); setPos(a);
-    applyPreset('front', st);
+    setStems(st); setMode('stems'); setView([a, b]); setAn(null); setNotes(null); setPos(a); setFocusOverride(null);
+    applyPreset('front', st, null);
     setMsg('Separación sin IA (centro / lados del estéreo): sirve en grabaciones donde cada instrumento está a un lado. Para separar de verdad cada instrumento usa la IA.');
   };
   const enhanceLead = async () => {
     if (!stems || !notes?.length) return;
-    const fid = focusOf(instrument, { ...stems, tracks: Object.fromEntries(Object.entries(stems.tracks).filter(([k]) => k !== 'lead')) });
+    const noLead = { ...stems, tracks: Object.fromEntries(Object.entries(stems.tracks).filter(([k]) => k !== 'lead')) };
+    const fid = focus !== 'lead' && noLead.tracks[focus] ? focus : focusOf(instrument, noLead);
     const base = stems.tracks[fid];
     const rel = (allNotes ? removeHarmonics(notes) : skyline(notes)).map((n) => ({ midi: n.midi, start: n.start - stems.from, dur: n.dur }));
     setBusy({ label: 'Realzando la melodía del solo', p: 0 });
@@ -314,14 +323,15 @@ export function StudioPage() {
       const lead = await spectralGain(base, ctx(), leadGain(rel), (p) => setBusy({ label: 'Realzando la melodía del solo', p }));
       const st = { ...stems, tracks: { ...stems.tracks, lead } };
       setStems(st);
+      setFocusOverride('lead');
       setMixState((m) => ({ ...m, lead: { vol: 1, mute: false, solo: false }, [fid]: { ...(m[fid] ?? { vol: 1, solo: false }), mute: true } }));
       setMsg('✔ Pista «Instrumento realzado»: conserva los armónicos de las notas del solo y baja el resto (piano, guitarra…).');
     } catch (e) { setErr(`No se pudo realzar: ${(e as Error).message}`); }
     setBusy(null);
   };
-  function applyPreset(kind: 'solo' | 'front' | 'minus' | 'all', st: Stems | null = stems) {
+  function applyPreset(kind: 'solo' | 'front' | 'minus' | 'all', st: Stems | null = stems, override: string | null = focusOverride) {
     const ids = st ? Object.keys(st.tracks) : ['orig'];
-    const f = focusOf(instrument, st);
+    const f = st && override && st.tracks[override] ? override : focusOf(instrument, st);
     const v = (id: string): TrackState => {
       const isF = id === f;
       const vol = kind === 'all' ? 1 : kind === 'solo' ? (isF ? 1 : 0) : kind === 'front' ? (isF ? 1 : 0.22) : isF ? 0 : 1;
@@ -454,7 +464,7 @@ export function StudioPage() {
           <Card title="2 · ¿Qué instrumento quieres sacar?">
             <div className="inst-pick">
               {(Object.keys(INSTRUMENT_INFO) as Instrument[]).map((k) => (
-                <button key={k} className={`layer ${instrument === k ? 'on' : ''}`} onClick={() => setInstrument(k)}><span className="li">{INSTRUMENT_INFO[k].icon}</span><span>{INSTRUMENT_INFO[k].label}</span></button>
+                <button key={k} className={`layer ${instrument === k ? 'on' : ''}`} onClick={() => { setInstrument(k); setFocusOverride(null); }}><span className="li">{INSTRUMENT_INFO[k].icon}</span><span>{INSTRUMENT_INFO[k].label}</span></button>
               ))}
             </div>
             <p className="small muted">
@@ -474,6 +484,31 @@ export function StudioPage() {
             )}
             <Waveform mix={orig} focus={mode === 'stems' && stems ? stems.tracks[focus] : null} t0={win[0]} span={win[1] - win[0]} view={[Math.max(win[0], view[0]), Math.min(win[1], Math.max(view[1], view[0] + 0.5))]} pos={pos} sel={sel} markers={markers} bars={waveBars}
               onView={setView} onSeek={seek} onSelect={(s) => setSel(s ? [Math.max(win[0], s[0]), Math.min(win[1], s[1])] : null)} />
+            {mode === 'stems' && stems ? (
+              <div className="multitrack">
+                <div className="row between wrap">
+                  <b>Cada instrumento por separado</b>
+                  <div className="chip-row">
+                    <button className="chip" onClick={() => applyPreset('solo')}>🎧 Solo el instrumento</button>
+                    <button className="chip" onClick={() => applyPreset('front')}>⭐ Al frente</button>
+                    <button className="chip" onClick={() => applyPreset('minus')}>🎷 Todo menos él (toca tú)</button>
+                    <button className="chip" onClick={() => applyPreset('all')}>Todo al 100 %</button>
+                  </div>
+                </div>
+                <TrackLanes
+                  lanes={trackIds.map((id) => ({ id, label: TRACK_LABEL[id] ?? id, icon: LANE_STYLE[id]?.icon ?? '🎵', color: LANE_STYLE[id]?.color ?? '#3fb5a8', buf: tracks[id] }))}
+                  t0={win[0]} view={[Math.max(win[0], view[0]), Math.min(win[1], Math.max(view[1], view[0] + 0.5))]} pos={pos} sel={sel} mix={mixState} focus={focus} playing={playing}
+                  analysers={() => nodes.current.analysers} effective={(id) => effGain(id)}
+                  onMix={(id, st) => setMixState((m) => ({ ...m, [id]: st }))} onFocus={(id) => { setFocusOverride(id); setNotes(null); }}
+                  onSeek={seek} onSelect={(s) => setSel(s ? [Math.max(win[0], s[0]), Math.min(win[1], s[1])] : null)}
+                  onDownload={(id) => downloadWav(tracks[id], `${name} - ${TRACK_LABEL[id] ?? id}.wav`)} />
+                <p className="muted small">Cada franja muestra la onda de ese instrumento (más alta = suena más fuerte) y se mueve con el zoom del editor. <b>M</b> silencia, <b>S</b> deja sonar solo esa pista (puedes marcar varias), el control desliza el volumen (doble clic: 100 %) y ⬇ la descarga. «Estudiar esta» elige la pista que se transcribe y se resalta arriba.</p>
+              </div>
+            ) : stems ? (
+              <p className="hint small">Estás viendo la canción completa. Cambia a «✂️ Pistas separadas» para ver cada instrumento por separado y controlar su volumen.</p>
+            ) : (
+              <p className="hint small">Para ver cada instrumento por separado y controlar su volumen, sepáralos en el paso 4 (puedes marcar primero el solo con el loop).</p>
+            )}
             <div className="transport studio-transport">
               {playing ? <button className="btn stop" onClick={stop}>■ Parar</button> : <button className="btn primary" onClick={() => play()} disabled={!Object.keys(proc).length}>▶ Reproducir</button>}
               <span className="tempo mono">{fmt(pos)} / {fmt(win[1])}</span>
@@ -509,27 +544,7 @@ export function StudioPage() {
               </>
             ) : (
               <>
-                <div className="chip-row">
-                  <button className="chip" onClick={() => applyPreset('solo')}>🎧 Solo el instrumento</button>
-                  <button className="chip" onClick={() => applyPreset('front')}>⭐ Instrumento al frente</button>
-                  <button className="chip" onClick={() => applyPreset('minus')}>🎷 Todo menos el instrumento (toca tú)</button>
-                  <button className="chip" onClick={() => applyPreset('all')}>Mezcla original</button>
-                </div>
-                <div className="stem-mixer">
-                  {trackIds.map((id) => {
-                    const s = mixState[id] ?? { vol: 1, mute: false, solo: false };
-                    const level = rms(tracks[id]);
-                    return (
-                      <div key={id} className={`stem-row ${id === focus ? 'focus' : ''}`}>
-                        <span className="stem-name">{id === focus ? '★ ' : ''}{TRACK_LABEL[id] ?? id}<small>{level < 0.003 ? 'casi vacía' : level < 0.02 ? 'poca presencia' : 'con contenido'}</small></span>
-                        <input type="range" min={0} max={1.5} step={0.05} value={s.vol} onChange={(e) => setMixState({ ...mixState, [id]: { ...s, vol: +e.target.value } })} aria-label={`Volumen ${TRACK_LABEL[id]}`} />
-                        <button className={`btn sm ${s.mute ? 'on-red' : ''}`} onClick={() => setMixState({ ...mixState, [id]: { ...s, mute: !s.mute } })}>{s.mute ? 'Silenciada' : 'Silenciar'}</button>
-                        <button className={`btn sm ${s.solo ? 'on-green' : ''}`} onClick={() => setMixState({ ...mixState, [id]: { ...s, solo: !s.solo } })}>Solo</button>
-                        <button className="btn sm" onClick={() => downloadWav(tracks[id], `${name} - ${TRACK_LABEL[id] ?? id}.wav`)}>⬇ WAV</button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <p className="small">✔ Pistas separadas ({fmt(stems.from)}–{fmt(stems.to)}). <b>Cada instrumento aparece arriba, en el editor</b>, con su onda, volumen, silencio y solo.</p>
                 <div className="row gap wrap">
                   {INSTRUMENT_INFO[instrument].lead && (notes?.length ? <button className="btn" onClick={enhanceLead} disabled={!!busy}>✨ Realzar la melodía del solo (quita el acompañamiento de su pista)</button> : <span className="muted small">Para «realzar la melodía», transcribe primero el solo (paso 6).</span>)}
                   <button className="btn" onClick={() => { if (confirm('¿Descartar las pistas separadas?')) { stop(); setStems(null); setMode('full'); setView([0, orig.duration]); } }}>Descartar pistas</button>

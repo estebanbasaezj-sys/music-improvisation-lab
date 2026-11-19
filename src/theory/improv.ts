@@ -91,7 +91,7 @@ function scalePcsOf(c: Chord, req: SoloRequest): number[] {
   return scaleNotes(c.root, scaleById(id)).map(pc);
 }
 
-function nearestPc(pcs: number[], ref: number, lo: number, hi: number, dir = 0, avoidSame = false): number {
+export function nearestPc(pcs: number[], ref: number, lo: number, hi: number, dir = 0, avoidSame = false): number {
   let best = ref;
   let bd = Infinity;
   for (let m = lo; m <= hi; m++) {
@@ -104,7 +104,7 @@ function nearestPc(pcs: number[], ref: number, lo: number, hi: number, dir = 0, 
   }
   return bd === Infinity ? nearestPc(pcs, ref, lo, hi, 0, avoidSame) : best;
 }
-function step(m: number, pcs: number[], dir: number, lo: number, hi: number): number {
+export function step(m: number, pcs: number[], dir: number, lo: number, hi: number): number {
   for (let k = m + dir; k >= lo - 12 && k <= hi + 12; k += dir) if (pcs.includes(mod12(k))) return k;
   return m;
 }
@@ -184,7 +184,7 @@ function approachNotes(kind: Approach, target: number, scalePcs: number[]): numb
 }
 
 /** Relleno en corcheas desde `from` hacia `goal` en k notas: elige la forma que acaba más cerca del objetivo. */
-function fillPath(from: number, goal: number, k: number, scalePcs: number[], tones: number[], r: () => number, lo: number, hi: number): number[] {
+export function fillPath(from: number, goal: number, k: number, scalePcs: number[], tones: number[], r: () => number, lo: number, hi: number): number[] {
   if (k <= 0) return [];
   const cands: number[][] = [];
   for (const d of [1, -1]) {

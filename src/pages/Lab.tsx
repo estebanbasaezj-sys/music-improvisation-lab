@@ -12,18 +12,20 @@ import { PitchCheck } from '../components/PitchCheck';
 import { Card, Segmented, useNames } from '../components/common';
 import { PHRASES } from '../content/phrases';
 import { Workshop } from '../components/Workshop';
+import { CadenceExplorer } from '../components/CadenceExplorer';
 
-type Tab = 'taller' | 'escalas' | 'acordes' | 'progresiones' | 'frases' | 'metronomo' | 'afinador';
+type Tab = 'cadencias' | 'taller' | 'escalas' | 'acordes' | 'progresiones' | 'frases' | 'metronomo' | 'afinador';
 
 export function Lab() {
-  const [tab, setTab] = useState<Tab>('taller');
+  const [tab, setTab] = useState<Tab>('cadencias');
   return (
     <div className="page">
       <h1>Laboratorio</h1>
       <Segmented value={tab} onChange={setTab} options={[
-        { value: 'taller', label: '✨ Taller de improvisación' }, { value: 'escalas', label: 'Escalas y modos' }, { value: 'acordes', label: 'Acordes' }, { value: 'progresiones', label: 'Progresiones y acompañamiento' },
+        { value: 'cadencias', label: '🧭 Explorar una cadencia' }, { value: 'taller', label: '✨ Taller de improvisación' }, { value: 'escalas', label: 'Escalas y modos' }, { value: 'acordes', label: 'Acordes' }, { value: 'progresiones', label: 'Progresiones y acompañamiento' },
         { value: 'frases', label: 'Frases' }, { value: 'metronomo', label: 'Metrónomo' }, { value: 'afinador', label: 'Detector de notas' },
       ]} />
+      {tab === 'cadencias' && <CadenceExplorer />}
       {tab === 'taller' && <WorkshopLab />}
       {tab === 'escalas' && <ScalesLab />}
       {tab === 'acordes' && <ChordsLab />}
@@ -62,7 +64,7 @@ function ScalesLab() {
     { label: 'Mayores y menores', ids: ['major', 'minor', 'harmonicMinor'] },
     { label: 'Pentatónicas y blues', ids: ['pentMajor', 'pentMinor', 'blues', 'bluesMajor'] },
     { label: 'Modos', ids: MODE_ORDER },
-    { label: 'Jazz', ids: ['phrygianDominant', 'dimHW', 'bebopDominant'] },
+    { label: 'Jazz', ids: ['phrygianDominant', 'dimHW', 'bebopDominant', 'bebopMajor', 'bebopDorian', 'melodicMinor', 'locrian2', 'altered', 'lydianDominant', 'mixolydianb13'] },
   ];
   return (
     <Card>

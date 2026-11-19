@@ -93,7 +93,10 @@ export const degreeName = (d: string) => ({ '1': 'fundamental', '3': '3ª', b3: 
 /** Analiza (y deletrea) cada nota de una línea respecto a la armonía. */
 export interface LineNamer { note: (n: Note) => string; chord: (c: Chord) => string }
 
-export function analyzeLine(notes: LineNote[], evts: ChordEvent[], opts: { keyRoot?: Note; blues?: boolean; names?: LineNamer } = {}): AnnotatedNote[] {
+/** Escala elegida para un acorde (explorador de cadencias): cambia qué notas se consideran «de paso». */
+export interface ChosenScale { pcs: number[]; notes: Note[]; name: string }
+
+export function analyzeLine(notes: LineNote[], evts: ChordEvent[], opts: { keyRoot?: Note; blues?: boolean; names?: LineNamer; scales?: (ChosenScale | undefined)[] } = {}): AnnotatedNote[] {
   const NM: LineNamer = opts.names ?? { note: (n) => noteName(n, true), chord: (c) => chordSymbol(c) };
   const starts = chordStarts(evts);
   const sorted = [...notes].sort((a, b) => a.start - b.start);
@@ -144,7 +147,8 @@ export function analyzeLine(notes: LineNote[], evts: ChordEvent[], opts: { keyRo
       const semis = (((n.midi - pc(c.root)) % 12) + 12) % 12;
       degree = SEMI_TO_TENSION[semis] ?? ['1', 'b2', '2', 'b3', '3', '4', 'b5', '5', 'b6', '6', 'b7', '7'][semis];
       const nextIsTarget = next && Math.abs(next.midi - n.midi) <= 2 && next.start - (n.start + n.dur) < 0.26 && classify(next.midi, evts[chordIndexAt(evts, next.start, starts)].chord);
-      const inScale = chordScalePcs(c).includes(p);
+      const chosen = opts.scales?.[ci];
+      const inScale = chosen ? chosen.pcs.includes(p) : chordScalePcs(c).includes(p);
       if (opts.blues && opts.keyRoot && (keyRel === 3 || keyRel === 6)) {
         role = 'blue';
         degree = keyRel === 3 ? 'b3' : 'b5';
@@ -152,8 +156,10 @@ export function analyzeLine(notes: LineNote[], evts: ChordEvent[], opts: { keyRo
         label = `blue note: ${keyRel === 3 ? 'b3' : 'b5'} de ${NM.note(opts.keyRoot)} sobre ${sym}${keyRel === 3 && ['7', '9', '13'].includes(c.quality.id) ? ' (roza la 3ª mayor del acorde)' : ''}`;
       } else if (n.tech === 'bebop') {
         role = 'passing';
-        spelled = transposeNote(c.root, IV['7']);
-        label = 'nota de paso de la escala bebop (7ª mayor sobre un dominante)';
+        const semis = (((n.midi - pc(c.root)) % 12) + 12) % 12;
+        const deg = semis === 4 ? '3' : semis === 8 ? '#5' : '7';
+        spelled = transposeNote(c.root, IV[deg]);
+        label = semis === 11 && ['7', '9', '13', '7b9'].includes(c.quality.id) ? 'nota de paso de la escala bebop (7ª mayor sobre un dominante)' : `nota de paso de la escala bebop (${deg === '#5' ? '#5' : deg === '3' ? '3ª mayor' : '7ª mayor'} añadida para que las notas del acorde caigan en los tiempos)`;
       } else if (apprTech && next) {
         role = 'approach';
         spelled = spellApproach(n.midi, next.midi);
@@ -165,9 +171,14 @@ export function analyzeLine(notes: LineNote[], evts: ChordEvent[], opts: { keyRo
         label = `aproximación cromática ${next.midi > n.midi ? 'desde abajo' : 'desde arriba'} a la nota siguiente`;
       } else if (inScale) {
         role = 'passing';
-        const sc = c.quality.scales[0]?.id ?? 'major';
-        spelled = scaleNotes(c.root, scaleById(sc)).find((x) => pc(x) === p) ?? null;
-        label = `nota de paso de ${NM.note(c.root)} ${scaleById(sc).name.toLowerCase()}`;
+        if (chosen) {
+          spelled = chosen.notes.find((x) => pc(x) === p) ?? null;
+          label = `nota de paso de ${chosen.name}`;
+        } else {
+          const sc = c.quality.scales[0]?.id ?? 'major';
+          spelled = scaleNotes(c.root, scaleById(sc)).find((x) => pc(x) === p) ?? null;
+          label = `nota de paso de ${NM.note(c.root)} ${scaleById(sc).name.toLowerCase()}`;
+        }
       } else if (nextIsTarget) {
         role = 'approach';
         const tgtLetter = pitchFromMidi(next.midi).letter;

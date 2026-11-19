@@ -96,6 +96,8 @@ export interface AppState {
   sound: { keys: 'piano' | 'rhodes'; layers: Layers; volumes: { melody: number; comp: number; bass: number; drums: number } };
   /** usos por mes (AAAA-MM) de funciones con límite en el plan gratuito */
   usage: Record<string, Record<string, number>>;
+  /** ejercicios del explorador de cadencias ya probados («cadencia:ejercicio» → fecha) */
+  explorer: Record<string, string>;
 }
 
 export interface GameState {
@@ -146,6 +148,7 @@ export const initialState = (): AppState => ({
   vocab: [],
   game: { xp: 0, xpByDay: {}, dailyGoal: 20, streak: { count: 0, lastDay: null, freezes: 1, best: 0 }, achievements: [], micOk: true, lessonsByDay: {}, perfectByDay: {}, chestDay: null },
   usage: {},
+  explorer: {},
   path: { sax: emptyPath(), guitar: emptyPath(), piano: emptyPath() },
   sound: { keys: 'piano', layers: { ...DEFAULT_LAYERS }, volumes: { melody: 0, comp: -5, bass: -2, drums: -6 } },
 });
@@ -195,6 +198,7 @@ function merge(loaded: AppState | null): AppState {
     vocab: [...(loaded.vocab ?? [])],
     game: { ...base.game, ...loaded.game, streak: { ...base.game.streak, ...loaded.game?.streak }, lessonsByDay: { ...loaded.game?.lessonsByDay }, perfectByDay: { ...loaded.game?.perfectByDay } },
     usage: { ...loaded.usage },
+    explorer: { ...loaded.explorer },
     path: {
       sax: { ...emptyPath(), ...loaded.path?.sax },
       guitar: { ...emptyPath(), ...loaded.path?.guitar },
@@ -495,3 +499,12 @@ export function countUse(feature: string) {
   update((s) => { const m = monthKey(); s.usage[m] = { ...s.usage[m], [feature]: (s.usage[m]?.[feature] ?? 0) + 1 }; });
 }
 export const usesThisMonth = (s: AppState, feature: string) => s.usage[monthKey()]?.[feature] ?? 0;
+
+/** Marca un ejercicio del explorador de cadencias como probado. Devuelve true si es la primera vez (da XP). */
+export const EXPLORE_XP = 5;
+export function markExplored(key: string): boolean {
+  if (state.explorer[key]) return false;
+  update((s) => { s.explorer[key] = today(); });
+  addXp(EXPLORE_XP);
+  return true;
+}

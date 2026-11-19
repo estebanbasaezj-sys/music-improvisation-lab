@@ -97,6 +97,16 @@ Cada tema enlaza la **grabación oficial en YouTube**. Los enlaces se comprobaro
 - **Mezcla** (barra superior): elige qué suena en todos los acompañamientos —batería, bajo, piano, guitarra, melodía y clic— en cualquier combinación (solo batería, batería + clic, solo piano, trío para solear…). Se aplica en vivo.
 - **Detener audio**: aparece un botón flotante mientras suena cualquier cosa (acompañamientos, frases, metrónomo, estudio, demostraciones, video); también con la tecla Esc.
 
+## Explorar una cadencia (Laboratorio)
+
+La primera pestaña del Laboratorio guía en tres pasos:
+
+1. **Elige la cadencia**: V7→I, ii–V–I mayor, blues de 12 compases, turnaround I–vi–ii–V, vamp dórico, ii–V–i menor, iii–VI7–ii–V, backdoor y sustitución tritonal, en cualquier tonalidad (nombres transpuestos para saxo).
+2. **Elige qué escala tocar**: modo fácil (una escala para toda la cadencia, con el modo que forma sobre cada acorde) o una escala por acorde con etiquetas *recomendada*, *segura*, *color*, *tensión*, *bebop* y *blues*, y el porqué de cada una (dórico, mixolidio, alterada, disminuida, lidio dominante, locrio #2, menor melódica, bebop…).
+3. **Prueba ideas de menos a más**: recorrer la escala (desde la fundamental, desde la 3ª, conectada sin cortar) → tríadas y arpegios (1-3-5-8, 1-3-5-7, conectados, 3-5-7-9) → ideas compuestas (1-2-3-5, terceras, notas guía, motivo) → bebop (aproximación cromática, enclosure, escala bebop, línea completa) → frases clave (b9 que resuelve, sustituto tritonal, pentatónicas superpuestas, b3→3 del blues).
+
+Cada idea se genera para la cadencia, la tonalidad, las escalas elegidas y el registro del instrumento; se ve en partitura con la función de cada nota, suena con acompañamiento, se repite frase a frase y tiene un reto. «¡Lo probé!» suma XP y cuenta para la racha. Las «frases clave» indican de dónde viene cada recurso; son frases originales construidas con ese recurso, no transcripciones. Código: `src/theory/cadence.ts` (pruebas en `cadence.test.ts`) y `src/components/CadenceExplorer.tsx`.
+
 ## Taller de improvisación
 
 Generador de solos de ejemplo **originales y explicados** sobre cualquier progresión y tonalidad, con siete ideas: notas guía, líneas a notas objetivo, arpegios desde la 3ª, motivo y desarrollo, pregunta-respuesta de blues, ritmo y espacio, y bebop. Cada nota se analiza respecto al acorde que suena (nota guía, nota del acorde, tensión, blue note, aproximación, nota de paso) y se colorea en la partitura. Flujo: escuchar → repetir después de la base → transformar (desplazar, cambiar el final…) → tu turno con un reto → grabarte → guardar en **Mi vocabulario** y practicarlo en las 12 tonalidades con repaso espaciado.

@@ -108,8 +108,8 @@ export const SCALES: ScaleDef[] = [
     uses: ['V7b9 en ii-V-i menor'],
   },
   {
-    id: 'dimHW', name: 'Disminuida (semitono-tono)', degrees: d('1 b2 #2 3 #4 5 6 b7'), family: 'jazz',
-    characteristic: ['b2', '#2', '#4'], chords: ['7b9', '13b9'],
+    id: 'dimHW', name: 'Disminuida (semitono-tono)', degrees: d('1 b2 b3 3 #4 5 6 b7'), family: 'jazz',
+    characteristic: ['b2', 'b3', '#4'], chords: ['7b9', '13b9'],
     summary: 'Simétrica de 8 notas: contiene b9, #9, #11 y 13 sobre un dominante.',
     uses: ['Dominantes alterados con b9', 'Sonido bebop moderno'],
   },
@@ -118,6 +118,49 @@ export const SCALES: ScaleDef[] = [
     characteristic: ['7'], chords: ['7'],
     summary: 'Mixolidio + 7ª mayor de paso: en corcheas desde una nota del acorde, las notas del acorde caen en tiempo fuerte.',
     uses: ['Líneas bebop sobre V7', 'Blues jazzístico'],
+  },
+  {
+    id: 'bebopMajor', name: 'Bebop mayor', degrees: d('1 2 3 4 5 #5 6 7'), family: 'jazz',
+    characteristic: ['#5'], chords: ['6', 'maj7'],
+    summary: 'Mayor + #5 de paso: bajando en corcheas desde una nota del acorde, 1-3-5-6 caen en los tiempos.',
+    uses: ['Acordes I6 / Imaj7 en líneas bebop'],
+  },
+  {
+    id: 'bebopDorian', name: 'Bebop menor (dórico + 7ª mayor de paso)', degrees: d('1 2 b3 4 5 6 b7 7'), family: 'jazz',
+    characteristic: ['7'], chords: ['m7'],
+    summary: 'Dórico con la 7ª mayor de paso entre la b7 y la fundamental: bajando desde la fundamental, 1-b7-5-b3 caen en los tiempos.',
+    uses: ['ii m7 en líneas bebop', 'Vamps menores'],
+  },
+  {
+    id: 'melodicMinor', name: 'Menor melódica (jazz)', degrees: d('1 2 b3 4 5 6 7'), family: 'jazz',
+    characteristic: ['b3', '7'], chords: ['m6', 'mMaj7'],
+    summary: 'Menor con 6ª y 7ª mayores (igual al subir y al bajar). De ella salen la alterada, la lidia dominante y la locria #2.',
+    uses: ['Tónica menor (i m6)', 'Fuente de los sonidos del jazz moderno'],
+  },
+  {
+    id: 'locrian2', name: 'Locrio #2 (6º de menor melódica)', degrees: d('1 2 b3 4 b5 b6 b7'), family: 'jazz',
+    characteristic: ['2'], chords: ['m7b5'],
+    summary: 'Locrio con 9ª natural: el m7b5 suena más suave y moderno.',
+    uses: ['iiø en ii-V-i menor (sonido moderno)'],
+  },
+  {
+    id: 'altered', name: 'Alterada (7º de menor melódica)', degrees: d('1 b2 b3 3 b5 b6 b7'), family: 'jazz',
+    characteristic: ['b2', 'b3', 'b5', 'b6'], chords: ['7', '7b9', '7#9'],
+    summary: 'Todas las tensiones alteradas del dominante: b9, #9, #11 y b13. Máxima tensión justo antes de resolver.',
+    uses: ['V7 que resuelve (mayor o menor)', 'Sonido moderno y "de salida"'],
+    avoidWhen: 'Solo sobre dominantes que resuelven; en un blues o un vamp estático suena fuera de lugar.',
+  },
+  {
+    id: 'lydianDominant', name: 'Lidio dominante (lidio b7)', degrees: d('1 2 3 #4 5 6 b7'), family: 'jazz',
+    characteristic: ['#4', 'b7'], chords: ['7', '9', '13'],
+    summary: 'Mixolidio con #11: el dominante que no resuelve por quintas (sustituto tritonal, bVII7, IV7 del blues moderno).',
+    uses: ['bII7 (sustituto tritonal)', 'bVII7 (cadencia backdoor)', 'Dominantes estáticos'],
+  },
+  {
+    id: 'mixolydianb13', name: 'Mixolidio b13', degrees: d('1 2 3 4 5 b6 b7'), family: 'jazz',
+    characteristic: ['b6'], chords: ['7'],
+    summary: 'Mixolidio con b13: dominante secundario que va a un acorde menor (A7 → Dm7).',
+    uses: ['VI7 (V7 del ii)', 'III7 (V7 del vi)'],
   },
 ];
 

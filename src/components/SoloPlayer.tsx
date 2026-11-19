@@ -6,7 +6,7 @@ import { playSequence, stopSequence, triggerNotes, ensureAudio } from '../audio/
 import { TimeStaff, ROLE_COLOR } from '../instruments/TimeStaff';
 import { ChordEvent } from '../theory/progressions';
 import { Note, noteName } from '../theory/notes';
-import { AnnotatedNote, LineNote, ROLE_LABEL, analyzeLine, chordStarts, NoteRole } from '../theory/line';
+import { AnnotatedNote, ChosenScale, LineNote, ROLE_LABEL, analyzeLine, chordStarts, NoteRole } from '../theory/line';
 import { eventsToChart, repeatEvents, sliceEvents, sliceLine } from '../theory/section';
 import { addVocab } from '../progress/store';
 import { LayerToggles, useOnStopAll } from './Mixer';
@@ -27,13 +27,15 @@ interface Props {
   source: string;
   guidedRepeat?: boolean;
   hideSave?: boolean;
+  /** escala elegida por acorde (para explicar las notas de paso con la escala que eligió el alumno) */
+  scales?: (ChosenScale | undefined)[];
 }
 
-export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: bpm0, phrases = [], title, summary, source, guidedRepeat, hideSave }: Props) {
+export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: bpm0, phrases = [], title, summary, source, guidedRepeat, hideSave, scales }: Props) {
   const t = useTransposer();
   const names = useNames();
   const sorted = useMemo(() => [...notes].sort((a, b) => a.start - b.start), [notes]);
-  const an = useMemo(() => analyzeLine(sorted, events, { keyRoot, blues, names: { note: t.noteName, chord: t.chordName } }), [sorted, events, keyRoot, blues, t.instrument, t.sax]); // eslint-disable-line react-hooks/exhaustive-deps
+  const an = useMemo(() => analyzeLine(sorted, events, { keyRoot, blues, scales, names: { note: t.noteName, chord: t.chordName } }), [sorted, events, keyRoot, blues, scales, t.instrument, t.sax]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = events.reduce((s, e) => s + e.beats, 0);
   const starts = useMemo(() => chordStarts(events), [events]);
   const [bpm, setBpm] = useState(bpm0);

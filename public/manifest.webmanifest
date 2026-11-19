@@ -1,0 +1,14 @@
+{
+  "name": "Music Improvisation Lab",
+  "short_name": "Improv Lab",
+  "description": "Profesor de improvisación: saxofón, guitarra y piano",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161f",
+  "theme_color": "#14161f",
+  "lang": "es",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

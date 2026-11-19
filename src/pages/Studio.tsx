@@ -20,6 +20,10 @@ import { Card, StatusBadge, useNames, useTransposer, voiceFor } from '../compone
 import { Workshop } from '../components/Workshop';
 import { useOnStopAll } from '../components/Mixer';
 import { isEmbedded } from '../recording/pitch';
+import { timedAi, trackFeature } from '../telemetry/telemetry';
+import { access, FeatureId } from '../product/plans';
+import { countUse } from '../progress/store';
+import { ProNote } from '../components/ProNote';
 import { ImportPanel } from './studio/Import';
 import { Waveform } from './studio/Waveform';
 import { SoloExplanation } from './studio/Explain';
@@ -92,6 +96,9 @@ export function StudioPage() {
   const [recs, setRecs] = useState<Recording[]>([]);
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [gpu, setGpu] = useState<boolean | null>(null);
+  const [gate, setGate] = useState<{ f: FeatureId; reason?: string } | null>(null);
+  const allow = (f: FeatureId, extra?: { projects?: number }) => { const a = access(app, f, extra); if (!a.ok) setGate({ f, reason: a.reason }); return a.ok; };
+  const left = (f: FeatureId) => { const a = access(app, f); return a.left !== undefined ? ` (${a.left} gratis este mes)` : ''; };
   const nodes = useRef<{ srcs: AudioBufferSourceNode[]; gains: Record<string, GainNode>; master: GainNode | null; analysers: Record<string, AnalyserNode> }>({ srcs: [], gains: {}, master: null, analysers: {} });
   const startInfo = useRef<{ ctxT: number; pos0: number } | null>(null);
   const raf = useRef(0);
@@ -125,7 +132,8 @@ export function StudioPage() {
       for (let i = 0; i < ids.length; i++) {
         if (cancel) return;
         setBusy({ label: `Ajustando velocidad y tono (${i + 1}/${ids.length})`, p: i / ids.length });
-        out[ids[i]] = await stretchBuffer(tracks[ids[i]], speed, semi, (p) => !cancel && setBusy({ label: `Ajustando velocidad y tono (${i + 1}/${ids.length})`, p: (i + p) / ids.length }));
+        const tr = tracks[ids[i]];
+        out[ids[i]] = await timedAi({ op: 'velocidad-tono', where: 'device', model: 'SoundTouch', inputSec: tr.duration }, () => stretchBuffer(tr, speed, semi, (p) => !cancel && setBusy({ label: `Ajustando velocidad y tono (${i + 1}/${ids.length})`, p: (i + p) / ids.length })));
       }
       if (!cancel) { setProc(out); setBusy(null); if (wasPlaying) setTimeout(() => play(), 50); }
     }, 300);
@@ -145,6 +153,7 @@ export function StudioPage() {
       const b = await decodeAudio(await data.arrayBuffer());
       if (b.duration > 900) throw new Error('el audio dura más de 15 minutos: recórtalo o captura solo la parte que quieres estudiar');
       resetFor(b); setBlob(data); setName(n); setSource(src); setProjectId(null);
+      trackFeature('importar', { origen: src, sec: Math.round(b.duration) });
     } catch (e) { setErr(`No se pudo leer el audio: ${(e as Error).message || 'formato no soportado'}.`); }
     setBusy(null);
   };
@@ -167,6 +176,8 @@ export function StudioPage() {
   };
   const save = async () => {
     if (!blob || !orig) return;
+    if (!projectId && !allow('proyectos', { projects: projects.length })) return;
+    trackFeature('guardar-proyecto');
     setBusy({ label: 'Guardando el proyecto', p: 0.5 });
     try {
       const now = new Date().toISOString();
@@ -281,6 +292,7 @@ export function StudioPage() {
   const regionForSep = (): [number, number] => (sel && sel[1] - sel[0] > 1 ? [sel[0], sel[1]] : [0, orig!.duration]);
   const separateAI = async () => {
     if (!orig) return;
+    if (!allow('separacion-ia')) return;
     const [a, b] = regionForSep();
     const dev = gpu ? 'webgpu' : 'wasm';
     const est = estimateSeconds(b - a, dev);
@@ -291,7 +303,11 @@ export function StudioPage() {
     const label = (p: { phase: string; device: string }) => p.phase === 'model' ? 'Preparando el modelo de IA (la primera vez descarga ≈13 MB)' : `Separando instrumentos con IA en tu ${p.device === 'webgpu' ? 'tarjeta gráfica' : 'procesador'} · fragmento ${fmt(a)}–${fmt(b)}`;
     setBusy({ label: 'Preparando el modelo de IA', p: 0, cancel: () => ac.abort() });
     try {
-      const tr = await separateAudio(orig, a, b, ctx(), { signal: ac.signal, onProgress: (p) => setBusy({ label: label(p), p: p.phase === 'model' ? 0.02 : p.p, cancel: () => ac.abort() }) });
+      let usedDevice = dev;
+      const tr = await timedAi({ op: 'separacion-ia', where: 'device', model: 'SCNet', device: dev, inputSec: b - a },
+        () => separateAudio(orig, a, b, ctx(), { signal: ac.signal, onProgress: (p) => { usedDevice = p.device; setBusy({ label: label(p), p: p.phase === 'model' ? 0.02 : p.p, cancel: () => ac.abort() }); } }),
+        () => ({ device: usedDevice }));
+      countUse('separacion-ia');
       const st: Stems = { from: a, to: b, method: 'ia', tracks: tr as Record<StemName, AudioBuffer> };
       setStems(st); setMode('stems'); setView([a, b]); setAn(null); setNotes(null); setFocusOverride(null);
       setPos(a); if (sel && (sel[0] < a || sel[1] > b)) setSel(null);
@@ -304,6 +320,7 @@ export function StudioPage() {
   };
   const separateCenter = () => {
     if (!orig) return;
+    trackFeature('separacion-centro', { sec: Math.round(regionForSep()[1] - regionForSep()[0]) });
     const [a, b] = regionForSep();
     const part = sliceBuffer(orig, a, b, ctx());
     const { center, sides } = midSide(part, ctx());
@@ -320,7 +337,7 @@ export function StudioPage() {
     const rel = (allNotes ? removeHarmonics(notes) : skyline(notes)).map((n) => ({ midi: n.midi, start: n.start - stems.from, dur: n.dur }));
     setBusy({ label: 'Realzando la melodía del solo', p: 0 });
     try {
-      const lead = await spectralGain(base, ctx(), leadGain(rel), (p) => setBusy({ label: 'Realzando la melodía del solo', p }));
+      const lead = await timedAi({ op: 'realce', where: 'device', model: 'máscara armónica', inputSec: base.duration }, () => spectralGain(base, ctx(), leadGain(rel), (p) => setBusy({ label: 'Realzando la melodía del solo', p })));
       const st = { ...stems, tracks: { ...stems.tracks, lead } };
       setStems(st);
       setFocusOverride('lead');
@@ -355,11 +372,12 @@ export function StudioPage() {
       buf = acc; base = stems.from;
     }
     setBusy({ label: 'Analizando armonía y tempo', p: 0 });
-    try { setAn({ a: await analyzeAudio(buf, (p, label) => setBusy({ label, p })), base }); } catch (e) { setErr(`Error de análisis: ${(e as Error).message}`); }
+    try { setAn({ a: await timedAi({ op: 'armonia', where: 'device', model: 'cromagrama + tempo', inputSec: buf.duration }, () => analyzeAudio(buf, (p, label) => setBusy({ label, p }))), base }); } catch (e) { setErr(`Error de análisis: ${(e as Error).message}`); }
     setBusy(null);
   };
   const transcribe = async () => {
     if (!orig) return;
+    if (!allow('transcripcion')) return;
     setErr('');
     const isStems = mode === 'stems' && stems;
     const src = isStems ? stems!.tracks[focus] : orig;
@@ -368,7 +386,8 @@ export function StudioPage() {
     const label = `Transcribiendo ${isStems ? `la pista «${TRACK_LABEL[focus]}»` : 'la mezcla'} (Basic Pitch, en tu dispositivo)`;
     setBusy({ label, p: 0 });
     try {
-      const ns = await transcribeNotes(src, Math.max(0, a), Math.min(src.duration, b), (p) => setBusy({ label, p }));
+      const ns = await timedAi({ op: 'transcripcion', where: 'device', model: 'Basic Pitch', device: 'webgl/cpu', inputSec: Math.min(src.duration, b) - Math.max(0, a) }, () => transcribeNotes(src, Math.max(0, a), Math.min(src.duration, b), (p) => setBusy({ label, p })));
+      countUse('transcripcion');
       const [lo, hi] = INSTRUMENT_INFO[instrument].range;
       setNotes(ns.map((n) => ({ ...n, start: n.start + off })).filter((n) => n.midi >= lo && n.midi <= hi));
     } catch (e) { setErr(`No se pudo transcribir: ${(e as Error).message}. Prueba con un fragmento más corto.`); }
@@ -442,6 +461,7 @@ export function StudioPage() {
           {err && <p className="warn">{err}</p>}
         </Card>
       )}
+      {gate && <ProNote feature={gate.f} reason={gate.reason} onClose={() => setGate(null)} />}
       {busy && (
         <div className="busy">
           <span>{busy.label}…</span>
@@ -536,7 +556,7 @@ export function StudioPage() {
               <>
                 <p className="small">Separa {sel && sel[1] - sel[0] > 1 ? <b>el loop marcado ({fmt(sel[0])}–{fmt(sel[1])})</b> : <b>todo el audio</b>} en pistas: voz/solista, batería, bajo y resto (piano, guitarra…). Se calcula en tu {gpu ? 'tarjeta gráfica (WebGPU)' : 'procesador'}; tiempo estimado ≈ {Math.max(5, estimateSeconds((sel && sel[1] - sel[0] > 1 ? sel[1] - sel[0] : orig.duration), gpu ? 'webgpu' : 'wasm'))} s.{!sel && orig.duration > 60 ? ' Consejo: marca primero el solo con el loop: es mucho más rápido.' : ''}</p>
                 <div className="row gap wrap">
-                  <button className="btn primary" onClick={separateAI} disabled={!!busy}>✂️ Separar con IA</button>
+                  <button className="btn primary" onClick={separateAI} disabled={!!busy}>✂️ Separar con IA{left('separacion-ia')}</button>
                   <button className="btn" onClick={separateCenter} disabled={!!busy}>Sin IA: centro / lados (instantáneo)</button>
                 </div>
                 <p className="muted small">IA: modelo SCNet (Tong et al., 2024; pesos con licencia MIT) mediante ONNX Runtime Web; la primera vez descarga ≈13 MB y queda guardado. Tu audio no sale de tu equipo.</p>
@@ -581,7 +601,7 @@ export function StudioPage() {
             <Card title="6 · Partitura del solo" actions={<StatusBadge status="beta" />}>
               <p className="small">Transcribe {sel ? 'el loop marcado' : 'los primeros 40 s'} de {mode === 'stems' && stems ? <>la pista <b>{TRACK_LABEL[focus]}</b></> : 'la mezcla (separa primero para mejores resultados)'} con Basic Pitch (Spotify, código abierto, en tu dispositivo). Se muestran las notas en el registro de {info.label.toLowerCase()}, en la notación de tu instrumento.</p>
               <div className="row gap wrap">
-                <button className="btn primary" onClick={transcribe} disabled={!!busy}>🎼 Transcribir notas</button>
+                <button className="btn primary" onClick={transcribe} disabled={!!busy}>🎼 Transcribir notas{left('transcripcion')}</button>
                 {notes && <>
                   <label className="toggle"><input type="checkbox" checked={allNotes} onChange={() => setAllNotes(!allNotes)} />Todas las notas (acordes)</label>
                   <select value={quant} onChange={(e) => setQuant(+e.target.value)}><option value={0.5}>Cuantizar a corcheas</option><option value={0.25}>A semicorcheas</option><option value={1 / 3}>A tresillos</option><option value={1}>A negras</option></select>

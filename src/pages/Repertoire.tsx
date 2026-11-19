@@ -1,6 +1,6 @@
 // Repertorio tipo «Real Book»: lista filtrable de temas clásicos y página de práctica de cada tema
 // (cifrado por instrumento, melodía, solos de ejemplo, base para improvisar y grabación original).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LINKS_CHECKED, TAG_LABEL, TUNES, Tune, TuneTag, parseMelody, tuneById } from '../content/repertoire';
 import { IDEAS, IdeaId, generateSolo } from '../theory/improv';
 import { ChordEvent, keyInterval, parseChart, transposeEvents } from '../theory/progressions';
@@ -16,6 +16,12 @@ import { SoloPlayer, PlayerPhrase } from '../components/SoloPlayer';
 import { BackingPanel } from '../components/BackingPanel';
 import { YouTubeEmbed } from '../components/YouTubeEmbed';
 import { ImprovAnalyzer } from '../learn/ImprovAnalyzer';
+import { FREE_TUNES } from '../product/plans';
+import { ProBadge, ProNote } from '../components/ProNote';
+import { trackFeature } from '../telemetry/telemetry';
+
+/** En el plan gratuito, los primeros temas del repertorio están completos. */
+export const tuneLocked = (plan: string, id: string) => plan !== 'pro' && TUNES.findIndex((t) => t.id === id) >= FREE_TUNES;
 
 const LEVEL_NAME = ['', 'Inicial', 'Intermedio', 'Avanzado', 'Experto'];
 const keyRootOf = (k: string) => k.replace(/m$/, '');
@@ -73,9 +79,9 @@ export function RepertoirePage() {
       </div>
       <div className="tune-grid">
         {list.map((t) => (
-          <a key={t.id} className={`tune-card st-${t.style}`} href={`#/tema/${t.id}`}>
+          <a key={t.id} className={`tune-card st-${t.style} ${tuneLocked(s.settings.plan, t.id) ? 'locked' : ''}`} href={`#/tema/${t.id}`}>
             <div className="tc-top">
-              <span className="tc-style">{STYLE_LABEL[t.style].split(' (')[0]}</span>
+              <span className="tc-style">{STYLE_LABEL[t.style].split(' (')[0]}{tuneLocked(s.settings.plan, t.id) && <> <ProBadge /></>}</span>
               <Level n={t.level} />
             </div>
             <h3>{t.title}</h3>
@@ -165,7 +171,16 @@ export function TunePage({ id }: { id: string }) {
   const avail = IDEAS.filter((i) => blues || !i.needsBlues);
   const solo = useMemo(() => (tune ? generateSolo({ events, keyRoot, minor, blues, range, level, seed, idea, names: { note: t.noteName, chord: t.chordName } }) : null), [tune, events, key, level, seed, idea, range.lo, range.hi, t.instrument, t.sax, s.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => { if (tune) trackFeature('tema', { id: tune.id }); }, [tune?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!tune) return <div className="page"><a className="back" href="#/repertorio">← Repertorio</a><p>Tema no encontrado.</p></div>;
+  if (tuneLocked(s.settings.plan, tune.id)) return (
+    <div className="page tune-page">
+      <a href="#/repertorio" className="back">← Repertorio</a>
+      <h1>{tune.title}</h1>
+      <p className="lead">{tune.composer} · {tune.year} · {tune.form}</p>
+      <ProNote feature="repertorio-completo" reason={`El plan gratuito incluye ${FREE_TUNES} temas completos. «${tune.title}» es parte del repertorio Pro.`} />
+    </div>
+  );
   const secLabel = win ? ` · ${win.label} (c. ${win.fromBar + 1}–${win.toBar + 1})` : '';
   const query = `${tune.title} ${tune.recording.artist}`;
   return (

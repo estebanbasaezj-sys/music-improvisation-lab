@@ -14,6 +14,7 @@ import { parseNote } from '../theory/notes';
 import { lessonById } from '../content/lessons';
 import { Card } from '../components/common';
 import { InstrumentArt, Mascot, NodeGlyph } from '../components/Art';
+import { lessonLength } from '../product/profile';
 
 const KIND_NAME: Record<string, string> = { learn: 'Aprende', practice: 'Practica', play: 'Toca', challenge: 'Desafío' };
 
@@ -181,7 +182,7 @@ export function NodePage({ id }: { id: string }) {
   const diff: 1 | 2 | 3 = node?.kind === 'learn' ? 1 : node?.kind === 'practice' ? 2 : 3;
   const ctx = useGenCtx(seed, diff);
   const [result, setResult] = useState<{ res: SessionResult; xp: number; stars: number } | null>(null);
-  const items = useMemo(() => (node && node.kind !== 'play' ? buildItems(node.unit.items, node.kind === 'learn' ? 8 : node.kind === 'practice' ? 10 : 12, ctx, !s.game.micOk) : []), [node, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = useMemo(() => (node && node.kind !== 'play' ? buildItems(node.unit.items, lessonLength(s, node.kind), ctx, !s.game.micOk) : []), [node, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!node) return <div className="page"><p>Esta lección no existe para {INSTRUMENT_LABEL[inst]}.</p><a href="#/camino">Volver al camino</a></div>;
   const exit = () => { window.location.hash = '#/camino'; };
   if (result) {

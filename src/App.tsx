@@ -18,7 +18,11 @@ import { StudioPage } from './pages/Studio';
 import { SoundBadge } from './components/SoundSettings';
 import { MixButton, StopAllButton } from './components/Mixer';
 import { StreakOverlay } from './components/StreakOverlay';
+import { track } from './telemetry/telemetry';
 import { RepertoirePage, TunePage } from './pages/Repertoire';
+import { AdminPage } from './pages/Admin';
+import { PlansPage } from './pages/Plans';
+import { mainNav } from './product/profile';
 
 const NAV: { path: string; label: string; icon: IconName }[] = [
   { path: 'hoy', label: 'Hoy', icon: 'sun' },
@@ -37,7 +41,7 @@ const NAV: { path: string; label: string; icon: IconName }[] = [
 function useHash() {
   const [h, setH] = useState(window.location.hash.slice(2) || 'hoy');
   useEffect(() => {
-    const on = () => { setH(window.location.hash.slice(2) || 'hoy'); window.scrollTo(0, 0); stopSequence(); };
+    const on = () => { const h = window.location.hash.slice(2) || 'hoy'; setH(h); window.scrollTo(0, 0); stopSequence(); track('page', h.split('/')[0]); };
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, []);
@@ -47,6 +51,8 @@ function useHash() {
 export function App() {
   const s = useAppState();
   const route = useHash();
+  const main = mainNav(s);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [seg, arg] = route.split('/');
   const setInst = (i: InstrumentId) => update((st) => { st.instrument = i; });
   let page;
@@ -71,11 +77,13 @@ export function App() {
     case 'sesion': page = <Today />; break;
     case 'repertorio': page = <RepertoirePage />; break;
     case 'tema': page = <TunePage id={arg} />; break;
+    case 'admin': page = <AdminPage />; break;
+    case 'planes': page = <PlansPage />; break;
     default: page = <Home />;
   }
-  const navSeg = seg === 'leccion' || seg === 'ruta' ? 'teoria' : seg === 'cancion' ? 'canciones' : seg === 'tema' ? 'repertorio' : seg === 'diagnostico' ? 'progreso' : ['nodo', 'nivel', 'saltar'].includes(seg) ? 'camino' : seg === 'repaso' || seg === 'sesion' ? 'hoy' : seg || 'hoy';
+  const navSeg = seg === 'leccion' || seg === 'ruta' ? 'teoria' : seg === 'cancion' ? 'canciones' : seg === 'tema' ? 'repertorio' : seg === 'diagnostico' || seg === 'admin' || seg === 'planes' ? 'progreso' : ['nodo', 'nivel', 'saltar'].includes(seg) ? 'camino' : seg === 'repaso' || seg === 'sesion' ? 'hoy' : seg || 'hoy';
   return (
-    <div className="app">
+    <div className={`app ${s.settings.profile ? `age-${s.settings.profile}` : ''} ${main ? 'simple' : ''}`}>
       <header className="top">
         <a className="brand" href="#/hoy"><img src="./icon.svg" alt="" /> <span>Music Improvisation Lab</span></a>
         <div className="inst-switch" role="radiogroup" aria-label="Instrumento">
@@ -96,9 +104,10 @@ export function App() {
         )}
       </header>
       <nav className="side">
-        {NAV.map((n) => (
-          <a key={n.path} href={`#/${n.path}`} className={navSeg === n.path ? 'on' : ''}><span className="ico"><Icon name={n.icon} size={22} /></span><span>{n.label}</span></a>
+        {NAV.filter((n) => !main || main.includes(n.path) || moreOpen || navSeg === n.path).map((n) => (
+          <a key={n.path} href={`#/${n.path}`} className={`${navSeg === n.path ? 'on' : ''} ${main && !main.includes(n.path) ? 'extra' : ''}`}><span className="ico"><Icon name={n.icon} size={22} /></span><span>{n.label}</span></a>
         ))}
+        {main && <button className="nav-more" onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen}><span className="ico">{moreOpen ? '▴' : '▾'}</span><span>{moreOpen ? 'Menos' : 'Más'}</span></button>}
       </nav>
       <StreakOverlay />
       <main key={s.instrument + route} className={['nodo', 'saltar', 'repaso'].includes(seg) || (seg === 'nivel') ? 'focus' : ''}>{page}</main>

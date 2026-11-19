@@ -6,6 +6,7 @@ import { Card, Segmented } from '../components/common';
 import { weakestSkills } from '../content/session';
 import { SoundSettings } from '../components/SoundSettings';
 import { MicHelp } from '../components/MicHelp';
+import { isSimple } from '../product/profile';
 
 export function ProgressPage() {
   const s = useAppState();
@@ -67,6 +68,13 @@ export function ProgressPage() {
       <Settings />
       <SoundSettings />
       <MicHelp />
+      <Card title="Planes y administración">
+        <div className="row gap wrap">
+          <a className="btn" href="#/planes">💳 Planes (Gratis / Pro)</a>
+          <a className="btn" href="#/admin">🛠 Administración (para el equipo)</a>
+        </div>
+        <p className="muted small">Administración muestra el uso, el rendimiento y el costo de la IA medidos en este navegador.</p>
+      </Card>
       <Card title="Copia de seguridad">
         <p className="small">El progreso se guarda en este navegador. Exporta un archivo para no perderlo o para pasarlo a otro dispositivo.</p>
         <div className="row gap">
@@ -86,6 +94,12 @@ function Settings() {
       <div className="row gap wrap">
         <label className="field inline"><span>Saxofón</span>
           <Segmented size="sm" value={s.settings.saxType} onChange={(v) => update((st) => { st.settings.saxType = v; })} options={[{ value: 'tenor', label: 'Tenor (Si♭)' }, { value: 'alto', label: 'Alto (Mi♭)' }]} />
+        </label>
+        <label className="field inline"><span>Quién practica</span>
+          <Segmented size="sm" value={s.settings.profile ?? 'adulto'} onChange={(v) => update((st) => { st.settings.profile = v; st.settings.simple = null; })} options={[{ value: 'nino', label: '🧒 Niño' }, { value: 'adolescente', label: '🧑‍🎤 Adolescente' }, { value: 'adulto', label: '🧑 Adulto' }]} />
+        </label>
+        <label className="field inline"><span>Menú</span>
+          <Segmented size="sm" value={isSimple(s) ? 'simple' : 'completo'} onChange={(v) => update((st) => { st.settings.simple = v === 'simple'; })} options={[{ value: 'simple', label: 'Simple' }, { value: 'completo', label: 'Completo' }]} />
         </label>
         <label className="field inline"><span>Nombres de notas</span>
           <Segmented size="sm" value={s.settings.noteNames} onChange={(v) => update((st) => { st.settings.noteNames = v; })} options={[{ value: 'letras', label: 'C D E' }, { value: 'solfeo', label: 'Do Re Mi' }]} />

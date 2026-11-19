@@ -69,10 +69,18 @@ export interface InstrumentProgress {
   practiceMinutes: Record<string, number>; // fecha → minutos
 }
 
+export type AgeProfile = 'nino' | 'adolescente' | 'adulto';
+export type Plan = 'free' | 'pro';
 export interface Settings {
   saxType: SaxType;
   noteNames: 'letras' | 'solfeo';
   defaultBpm: number;
+  /** quién practica: adapta menú, tamaño y metas */
+  profile: AgeProfile | null;
+  /** menú y pantallas reducidas (null = según el perfil) */
+  simple: boolean | null;
+  /** plan de licencia (sin cobro todavía: «pro» mientras se desarrolla; Administración permite previsualizar «free») */
+  plan: Plan;
 }
 
 export interface AppState {
@@ -86,6 +94,8 @@ export interface AppState {
   game: GameState;
   path: Record<InstrumentId, PathState>;
   sound: { keys: 'piano' | 'rhodes'; layers: Layers; volumes: { melody: number; comp: number; bass: number; drums: number } };
+  /** usos por mes (AAAA-MM) de funciones con límite en el plan gratuito */
+  usage: Record<string, Record<string, number>>;
 }
 
 export interface GameState {
@@ -95,6 +105,10 @@ export interface GameState {
   streak: { count: number; lastDay: string | null; freezes: number; best: number };
   achievements: string[];
   micOk: boolean; // el alumno prefiere ejercicios con micrófono
+  lessonsByDay: Record<string, number>;
+  perfectByDay: Record<string, number>;
+  /** día en que se abrió el cofre de las misiones diarias */
+  chestDay: string | null;
 }
 export interface NodeState { stars: number; timesDone: number; bestAcc: number; completedAt: string; byTest?: boolean }
 export interface PathState {
@@ -125,12 +139,13 @@ const emptyProgress = (): InstrumentProgress => ({ skills: {}, lessons: {}, sess
 export const initialState = (): AppState => ({
   version: 1,
   instrument: 'sax',
-  settings: { saxType: 'tenor', noteNames: 'letras', defaultBpm: 100 },
+  settings: { saxType: 'tenor', noteNames: 'letras', defaultBpm: 100, profile: null, simple: null, plan: 'pro' },
   progress: { sax: emptyProgress(), guitar: emptyProgress(), piano: emptyProgress() },
   shared: { concepts: {} },
   resources: { verified: {}, custom: [] },
   vocab: [],
-  game: { xp: 0, xpByDay: {}, dailyGoal: 20, streak: { count: 0, lastDay: null, freezes: 1, best: 0 }, achievements: [], micOk: true },
+  game: { xp: 0, xpByDay: {}, dailyGoal: 20, streak: { count: 0, lastDay: null, freezes: 1, best: 0 }, achievements: [], micOk: true, lessonsByDay: {}, perfectByDay: {}, chestDay: null },
+  usage: {},
   path: { sax: emptyPath(), guitar: emptyPath(), piano: emptyPath() },
   sound: { keys: 'piano', layers: { ...DEFAULT_LAYERS }, volumes: { melody: 0, comp: -5, bass: -2, drums: -6 } },
 });
@@ -178,7 +193,8 @@ function merge(loaded: AppState | null): AppState {
     shared: { concepts: { ...loaded.shared?.concepts } },
     resources: { verified: { ...loaded.resources?.verified }, custom: [...(loaded.resources?.custom ?? [])] },
     vocab: [...(loaded.vocab ?? [])],
-    game: { ...base.game, ...loaded.game, streak: { ...base.game.streak, ...loaded.game?.streak } },
+    game: { ...base.game, ...loaded.game, streak: { ...base.game.streak, ...loaded.game?.streak }, lessonsByDay: { ...loaded.game?.lessonsByDay }, perfectByDay: { ...loaded.game?.perfectByDay } },
+    usage: { ...loaded.usage },
     path: {
       sax: { ...emptyPath(), ...loaded.path?.sax },
       guitar: { ...emptyPath(), ...loaded.path?.guitar },
@@ -443,3 +459,39 @@ export const ACHIEVEMENTS: Record<string, { name: string; icon: string; desc: st
 export function unlockAchievement(id: string) {
   update((s) => { if (!s.game.achievements.includes(id)) s.game.achievements.push(id); });
 }
+
+
+// ---------- misiones diarias, nivel de jugador y uso por mes ----------
+/** Registra una lección terminada hoy (para las misiones del día). */
+export function recordLessonDone(accuracy: number) {
+  update((s) => {
+    const d = today();
+    s.game.lessonsByDay[d] = (s.game.lessonsByDay[d] ?? 0) + 1;
+    if (accuracy >= 0.9) s.game.perfectByDay[d] = (s.game.perfectByDay[d] ?? 0) + 1;
+  });
+}
+export interface Quest { id: string; icon: string; text: string; value: number; target: number }
+export function dailyQuests(s: AppState): Quest[] {
+  const d = today();
+  return [
+    { id: 'xp', icon: '⚡', text: `Gana ${s.game.dailyGoal} XP`, value: Math.min(xpToday(s), s.game.dailyGoal), target: s.game.dailyGoal },
+    { id: 'lessons', icon: '📖', text: 'Completa 2 lecciones', value: Math.min(s.game.lessonsByDay[d] ?? 0, 2), target: 2 },
+    { id: 'perfect', icon: '🎯', text: 'Haz una lección con 90 % de aciertos', value: Math.min(s.game.perfectByDay[d] ?? 0, 1), target: 1 },
+  ];
+}
+export const CHEST_XP = 15;
+export function openChest() {
+  update((s) => { s.game.chestDay = today(); });
+  addXp(CHEST_XP);
+}
+/** Nivel de jugador a partir del XP total (cada nivel cuesta un poco más que el anterior). */
+export function playerLevel(xp: number) {
+  let lv = 1, need = 60, acc = 0;
+  while (xp >= acc + need) { acc += need; lv++; need = Math.round(need * 1.18); }
+  return { level: lv, into: xp - acc, need };
+}
+export const monthKey = () => today().slice(0, 7);
+export function countUse(feature: string) {
+  update((s) => { const m = monthKey(); s.usage[m] = { ...s.usage[m], [feature]: (s.usage[m]?.[feature] ?? 0) + 1 }; });
+}
+export const usesThisMonth = (s: AppState, feature: string) => s.usage[monthKey()]?.[feature] ?? 0;

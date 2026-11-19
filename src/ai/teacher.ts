@@ -1,4 +1,5 @@
 // Profesor IA: usa la capacidad `sample` de los Artifacts de Claude (cuando la app se abre en claude.ai).
+import { estimateTokens, timedAi } from '../telemetry/telemetry';
 // Fuera de Claude no existe y la UI lo oculta. Toda respuesta musical se VALIDA: se descartan notas
 // mal formadas y luego el analizador de la app etiqueta cada nota contra el acorde real.
 import { chordSymbol } from '../theory/chords';
@@ -70,7 +71,8 @@ Reglas musicales:
 
 Responde SOLO con JSON con esta forma exacta:
 {"title": "...", "summary": "2-3 frases en español: qué demuestra el solo y qué escuchar", "phrases": [{"title": "Frase 1 (compases 1-2)", "explanation": "en español: qué notas usa sobre cada acorde y por qué funcionan; técnica concreta", "notes": [{"pitch": "F4", "start": 0, "dur": 0.5}]}]}`;
-  const raw = await sample.json<RawSolo>(prompt, { cache: false, signal });
+  const raw = await timedAi({ op: 'profesor-solo', where: 'cloud', model: 'claude (capacidad sample)', tokensIn: estimateTokens(prompt) },
+    () => sample.json<RawSolo>(prompt, { cache: false, signal }), (r) => ({ tokensOut: estimateTokens(JSON.stringify(r ?? {})) }));
   let dropped = 0;
   const notes: LineNote[] = [];
   const phrases: AiSolo['phrases'] = [];
@@ -110,7 +112,9 @@ export async function askTeacher(sample: SampleFn, history: { role: 'user' | 'as
 
 Contexto de lo que el alumno está viendo ahora:
 ${context}`;
-  const { text } = await sample([{ role: 'user', content: rules }, ...history], { cache: false, signal, onText: ({ text }: { text: string }) => onText(text) });
+  const { text } = await timedAi({ op: 'profesor-pregunta', where: 'cloud', model: 'claude (capacidad sample)', tokensIn: estimateTokens(rules + history.map((h) => h.content).join('\n')) },
+    () => sample([{ role: 'user', content: rules }, ...history], { cache: false, signal, onText: ({ text }: { text: string }) => onText(text) }) as Promise<{ text: string }>,
+    (r) => ({ tokensOut: estimateTokens(r.text) }));
   return text;
 }
 

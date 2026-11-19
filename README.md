@@ -63,6 +63,14 @@ El contenido nunca duplica lógica musical: una lección declara «escala X en t
 
 Los proyectos (audio, pistas, loop, marcas y ajustes) se guardan en el navegador (IndexedDB). Separar un tema entero puede tardar varios minutos: conviene marcar el solo con el loop y separar solo esa parte.
 
+## Para todas las edades, planes y administración
+
+- **¿Quién va a practicar?** Niño (6–12), adolescente (13–17) o adulto. Los perfiles de niño y adolescente usan el **menú simple** (lo esencial + «Más»), los niños tienen lecciones más cortas, meta de 10 XP y controles más grandes. Se cambia en Progreso → Ajustes.
+- **Misiones del día** (XP, 2 lecciones, una lección con 90 %) con cofre de recompensa, **nivel de jugador**, rachas con pantalla de celebración y meta diaria.
+- **Planes Gratis / Pro** (`src/product/plans.ts`): lo educativo es gratis; la separación con IA, la transcripción con explicación, el repertorio completo, los proyectos ilimitados y el Profesor IA son Pro (con cupos gratuitos mensuales). Aún no se cobra: el plan está en «Pro» y Administración permite previsualizar el gratuito.
+- **Administración** (`#/admin`, enlace en Progreso): observabilidad local y privada (uso por día, pantallas y funciones, operaciones de IA con tiempo, dispositivo y audio procesado, errores, capacidades del equipo), **calculadora de costo del Profesor IA** con los precios oficiales de Claude y el **plan de lanzamiento** con casillas.
+- **Plan de producto**: [`docs/PRODUCTO.md`](docs/PRODUCTO.md) — dónde corre la IA y cuánto cuesta, versiones, pasos para cobrar licencias, temas legales y lanzamiento.
+
 ## Sonido
 
 Instrumentos sampleados (no síntesis): piano **Salamander Grand Piano V3** (Alexander Holm, CC-BY 3.0); saxo tenor y alto, contrabajo pizzicato, guitarra jazz, Rhodes y baterías de jazz y de escobillas renderizados desde **MuseScore General** (S. Christian Collins, MIT). Se regeneran con:

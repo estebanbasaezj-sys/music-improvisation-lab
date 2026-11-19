@@ -5,7 +5,8 @@ import { Item, GenCtx, generateItem, ItemSpec } from './items';
 import { ItemView, Verdict } from './ItemView';
 import { Tip } from './curriculum';
 import { ensureAudio, triggerNotes, Tone } from '../audio/engine';
-import { SkillId, addEvidence, addXp, clearMistake, recordMistake, useAppState } from '../progress/store';
+import { SkillId, addEvidence, addXp, clearMistake, recordLessonDone, recordMistake, useAppState } from '../progress/store';
+import { track } from '../telemetry/telemetry';
 import { InstrumentId } from '../theory/instruments';
 import { Mascot } from '../components/Art';
 
@@ -151,7 +152,10 @@ export function Celebration({ res, xp, stars, title, onContinue, failed, extra }
 
 /** Registra en el perfil el resultado de una sesión (XP + evidencias por habilidad). */
 export function commitSession(instrument: InstrumentId, res: SessionResult, xp: number) {
+  const acc = res.answered ? res.correct / res.answered : 0;
   addXp(xp);
+  if (!res.failed) recordLessonDone(acc);
+  track('lesson', instrument, { xp, acc: Math.round(acc * 100), answered: res.answered, failed: !!res.failed, skipped: res.skipped });
   for (const [skill, v] of Object.entries(res.perSkill)) if (v.n >= 2) addEvidence(instrument, skill as SkillId, { source: 'quiz', value: Math.round((v.ok / v.n) * 100), note: 'Lección del camino' });
 }
 

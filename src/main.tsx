@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
 import { loadSamples } from './audio/engine';
+import { startTelemetry } from './telemetry/telemetry';
+
+startTelemetry();
 
 // descarga y decodifica las muestras en segundo plano (no necesita gesto del usuario)
 void loadSamples();

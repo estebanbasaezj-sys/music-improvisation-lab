@@ -11,7 +11,7 @@ Cada push a `main` ejecuta los tests, compila y publica la app en **GitHub Pages
 ```bash
 npm install
 npm run dev        # desarrollo en http://localhost:5173
-npm test           # 39 tests de validación musical y lógica
+npm test           # tests de validación musical y lógica
 npm run build      # build de producción en dist/ (estático, funciona sin conexión)
 npm run preview    # servir el build
 ```
@@ -66,6 +66,21 @@ python3 tools/render_samples.py /usr/share/sounds/sf2/MuseScore_General_Full.sf2
 
 Cada instrumento es un único mp3 «sprite» (unos 6,4 MB en total) que la app recorta al cargarlo. Los acompañamientos tienen humanización (tiempo y dinámica), swing que se ajusta al tempo, walking bass variado, comping con voicings sin fundamental y anticipaciones. **Salida MIDI** opcional para usar tus propios plugins (Pianoteq, Kontakt, un DAW…): Progreso → Sonido → Avanzado.
 
+## Repertorio (tipo «Real Book»)
+
+32 temas clásicos (blues, standards, bebop, modal, bossa, funk/soul jazz y tradicionales) con **cifrado completo** transpuesto para tu instrumento (saxo tenor/alto escrito), forma y secciones, tonalidad elegible, **tempo libre** (practica lento y sube), bucle por sección y tres modos:
+
+- **Tema**: la melodía real en los temas de dominio público; en los temas con derechos, una **melodía de estudio original** generada sobre la armonía (claramente rotulada). No se reproducen melodías ni solos grabados protegidos.
+- **Solos de ejemplo**: solos originales explicados nota a nota con las siete ideas del taller.
+- **Improvisa tú**: la base completa para tocar encima, con escalas/notas guía del acorde que suena y análisis opcional por micrófono.
+
+Cada tema enlaza la **grabación oficial en YouTube**. Los enlaces se comprobaron con el servicio oEmbed de YouTube (`node tools/check-links.mjs`, requiere red) y la app los vuelve a comprobar al abrirlos con la API oficial del reproductor: si un video falla prueba el siguiente y, si ninguno funciona, ofrece búsquedas en YouTube y Spotify.
+
+## Mezclador global y botón «Detener audio»
+
+- **Mezcla** (barra superior): elige qué suena en todos los acompañamientos —batería, bajo, piano, guitarra, melodía y clic— en cualquier combinación (solo batería, batería + clic, solo piano, trío para solear…). Se aplica en vivo.
+- **Detener audio**: aparece un botón flotante mientras suena cualquier cosa (acompañamientos, frases, metrónomo, estudio, demostraciones, video); también con la tecla Esc.
+
 ## Taller de improvisación
 
 Generador de solos de ejemplo **originales y explicados** sobre cualquier progresión y tonalidad, con siete ideas: notas guía, líneas a notas objetivo, arpegios desde la 3ª, motivo y desarrollo, pregunta-respuesta de blues, ritmo y espacio, y bebop. Cada nota se analiza respecto al acorde que suena (nota guía, nota del acorde, tensión, blue note, aproximación, nota de paso) y se colorea en la partitura. Flujo: escuchar → repetir después de la base → transformar (desplazar, cambiar el final…) → tu turno con un reto → grabarte → guardar en **Mi vocabulario** y practicarlo en las 12 tonalidades con repaso espaciado.
@@ -92,8 +107,11 @@ Cada lección responde a seis preguntas (qué, para qué, cómo suena, cómo se 
 | Taller: solos de ejemplo explicados, repite después de mí, transformar, retos, vocabulario | ✅ |
 | Profesor IA (solo dentro de Claude) | ✅ con validación de notas |
 | Detección de notas individuales y comparación de alturas en frases | 🟡 beta (solo alturas, monofónico) |
-| Medición de precisión rítmica, reconocimiento de arpegios y acordes por micrófono | ⏳ no implementado: la app lo indica, no lo simula |
-| Biblioteca de standards (progresiones + análisis + tareas por instrumento) | ✅ 9 temas; sin melodías por derechos de autor |
+| Medición de precisión rítmica (botón, barra espaciadora o **palmas por micrófono**) | ✅ medida con el reloj de audio |
+| Reconocimiento de acordes por micrófono | 🟡 beta (cromagrama) |
+| Biblioteca de standards (progresiones + análisis + tareas por instrumento) | ✅ 9 temas con análisis ampliado |
+| Repertorio tipo Real Book con enlaces oficiales verificados | ✅ 32 temas; melodía real solo en temas de dominio público |
+| Rachas, meta diaria y pantallas de celebración estilo Duolingo | ✅ |
 | Recursos externos | ✅ enlaces a páginas principales, marcados como «no verificados» hasta que el usuario los confirme |
 
 ## Validación musical

@@ -13,8 +13,8 @@ import { progressionById, realize } from '../theory/progressions';
 import { parseNote } from '../theory/notes';
 import { lessonById } from '../content/lessons';
 import { Card } from '../components/common';
+import { InstrumentArt, Mascot, NodeGlyph } from '../components/Art';
 
-const KIND_ICON: Record<string, string> = { learn: '📖', practice: '🎯', play: '🎷', challenge: '🏆' };
 const KIND_NAME: Record<string, string> = { learn: 'Aprende', practice: 'Practica', play: 'Toca', challenge: 'Desafío' };
 
 export function usePathState(inst: InstrumentId) {
@@ -34,7 +34,9 @@ export function PathPage() {
   const units = unitsFor(inst);
   return (
     <div className="page path-page">
-      <h1>Mi camino · {INSTRUMENT_LABEL[inst]}</h1>
+      <div className="path-hero">
+        <Mascot inst={inst} size={92} say={<>Tu camino de <b>{INSTRUMENT_LABEL[inst].toLowerCase()}</b>: {doneSet.size} de {nodes.length} lecciones completadas.</>} />
+      </div>
       {ps.level === null ? (
         <Card className="accent">
           <p><b>¿Ya sabes tocar {INSTRUMENT_LABEL[inst].toLowerCase()}?</b> Haz la prueba de nivel (5–10 minutos, con ejercicios reales y tu instrumento) y empezarás donde te corresponde. Si empiezas de cero, comienza por el Nivel 0.</p>
@@ -54,7 +56,7 @@ export function PathPage() {
               <div><h2>{lv.name}</h2><p className="muted small">{lv.desc}</p></div>
               <span className="lv-prog">{doneN}/{lvNodes.length}</span>
             </div>
-            {lvUnits.map((u) => <UnitBlock key={u.id} unit={u} nodes={nodes.filter((n) => n.unit.id === u.id)} doneSet={doneSet} ps={ps} current={current} sel={sel} setSel={setSel} inst={inst} />)}
+            {lvUnits.map((u) => <UnitBlock key={u.id} unit={u} unitNo={units.indexOf(u) + 1} nodes={nodes.filter((n) => n.unit.id === u.id)} doneSet={doneSet} ps={ps} current={current} sel={sel} setSel={setSel} inst={inst} />)}
           </section>
         );
       })}
@@ -62,46 +64,55 @@ export function PathPage() {
   );
 }
 
-function UnitBlock({ unit, nodes, doneSet, ps, current, sel, setSel, inst }: { unit: Unit; nodes: PathNode[]; doneSet: Set<string>; ps: ReturnType<typeof usePathState>['ps']; current: PathNode; sel: string | null; setSel: (s: string | null) => void; inst: InstrumentId }) {
+const TRAIL = [0, 46, 74, 46, 0, -46, -74, -46];
+
+function UnitBlock({ unit, unitNo, nodes, doneSet, ps, current, sel, setSel, inst }: { unit: Unit; unitNo: number; nodes: PathNode[]; doneSet: Set<string>; ps: ReturnType<typeof usePathState>['ps']; current: PathNode; sel: string | null; setSel: (s: string | null) => void; inst: InstrumentId }) {
   const unitLocked = nodes[0].index > current.index;
+  const flip = unitNo % 2 === 0 ? -1 : 1;
+  const unitDone = nodes.every((n) => doneSet.has(n.id));
   return (
-    <div className={`unit ${unitLocked ? 'locked' : ''}`}>
-      <div className="unit-head">
-        <div>
-          <b>{unit.title}</b>{unit.track !== 'shared' && <span className="pill small">{INSTRUMENT_LABEL[unit.track]}</span>}
-          <div className="small muted">{unit.goal}</div>
+    <div className={`unit ${unitLocked ? 'locked' : ''} ${unitDone ? 'complete' : ''}`}>
+      <div className="unit-banner">
+        <div className="ub-text">
+          <span className="ub-kicker">Nivel {unit.level} · Unidad {unitNo}{unit.track !== 'shared' ? ` · ${INSTRUMENT_LABEL[unit.track]}` : ''}</span>
+          <h3>{unit.title}</h3>
+          <p>{unit.goal}</p>
         </div>
-        <div className="row gap">
-          {unit.guide?.length ? <details className="guide"><summary>📘 Guía</summary>{unit.guide.map((g) => <a key={g} href={`#/leccion/${g}`}>{lessonById(g)?.title}</a>)}</details> : null}
-          {unitLocked && <a className="btn sm" href={`#/saltar/${unit.id}`} title="Prueba para saltar hasta aquí">⏩ Saltar con prueba</a>}
+        <div className="ub-actions">
+          {unit.guide?.length ? <details className="guide"><summary>📘 Guía</summary><div className="guide-pop">{unit.guide.map((g) => <a key={g} href={`#/leccion/${g}`}>{lessonById(g)?.title}</a>)}</div></details> : null}
+          {unitLocked && <a className="ub-skip" href={`#/saltar/${unit.id}`} title="Prueba para saltar hasta aquí">⏩ Saltar</a>}
+          {unitDone && <span className="ub-done" title="Unidad completada">✓</span>}
         </div>
       </div>
-      <div className="nodes">
+      <div className="trail">
         {nodes.map((n, k) => {
           const done = doneSet.has(n.id);
           const isCur = n.id === current.id;
           const locked = !done && n.index > current.index;
           const st = ps.nodes[n.id];
           return (
-            <div key={n.id} className="node-wrap" style={{ marginLeft: `${[0, 18, 32, 18, 0][k % 5] * 2}%` }}>
-              <button className={`node ${done ? 'done' : ''} ${isCur ? 'cur' : ''} ${locked ? 'lock' : ''} ${n.kind}`} onClick={() => setSel(sel === n.id ? null : n.id)} aria-label={`${KIND_NAME[n.kind]} — ${unit.title}`}>
-                <span>{locked ? '🔒' : KIND_ICON[n.kind]}</span>
+            <div key={n.id} className={`node-wrap ${sel === n.id ? 'open' : ''}`} style={{ transform: `translateX(${TRAIL[k % TRAIL.length] * flip}px)` }}>
+              {isCur && <div className="node-start">{done ? 'REPASAR' : 'EMPEZAR'}</div>}
+              <button className={`node ${done ? 'done' : ''} ${isCur ? 'cur' : ''} ${locked ? 'lock' : ''} ${n.kind}`} onClick={() => setSel(sel === n.id ? null : n.id)} aria-label={`${KIND_NAME[n.kind]} — ${unit.title}${locked ? ' (bloqueado)' : done ? ' (completado)' : ''}`}>
+                <span className="node-face"><NodeGlyph kind={n.kind} inst={inst} locked={locked} done={done} /></span>
               </button>
               {done && st && <div className="node-stars">{[1, 2, 3].map((x) => <i key={x} className={x <= st.stars ? 'on' : ''}>★</i>)}</div>}
-              {isCur && <div className="node-start">EMPEZAR</div>}
               {sel === n.id && (
                 <div className="node-pop">
-                  <b>{KIND_NAME[n.kind]}: {unit.title}</b>
+                  <span className="np-kind">{KIND_NAME[n.kind]}</span>
+                  <b>{unit.title}</b>
                   <p className="small">{n.kind === 'learn' ? 'Conceptos nuevos con ejercicios fáciles.' : n.kind === 'practice' ? 'Más ejercicios, más variados.' : n.kind === 'play' ? unit.play?.text : 'Todo lo de la unidad. Tienes 3 vidas.'}</p>
-                  {locked ? <p className="small muted">Completa lo anterior o usa «Saltar con prueba».</p> : <a className="btn primary" href={`#/nodo/${n.id}`}>{done ? 'Repasar (+XP)' : 'Empezar'}</a>}
-                  {st?.byTest && <p className="small muted">Superado en la prueba de nivel.</p>}
+                  {locked ? <p className="small">🔒 Completa lo anterior o usa «Saltar».</p> : <a className="btn primary" href={`#/nodo/${n.id}`}>{done ? 'Repasar (+XP)' : 'Empezar'}</a>}
+                  {st?.byTest && <p className="small">Superado en la prueba de nivel.</p>}
                 </div>
               )}
             </div>
           );
         })}
+        <div className={`trail-art ${flip > 0 ? 'left' : 'right'}`} aria-hidden="true">
+          <InstrumentArt inst={inst} size={118} mood={unitLocked ? 'none' : unitDone ? 'happy' : 'wow'} className={unitLocked ? 'dim' : 'bob'} />
+        </div>
       </div>
-      {nodes.length > 0 && inst && null}
     </div>
   );
 }
@@ -146,7 +157,7 @@ function PlayNode({ node, onDone }: { node: PathNode; onDone: (stars: number) =>
   return (
     <div>
       <a className="back" href="#/camino">← Mi camino</a>
-      <h1>🎷 {node.unit.title}: ¡a tocar!</h1>
+      <h1 className="row gap"><InstrumentArt inst={s.instrument} size={52} /> {node.unit.title}: ¡a tocar!</h1>
       <p className="lead">{p.text}</p>
       {p.k === 'workshop' && <Workshop progression={p.progression} keyName={key} style={p.style} bpm={p.bpm} ideas={p.ideas} prompts={p.prompts} />}
       {p.k === 'backing' && (

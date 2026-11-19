@@ -7,6 +7,7 @@ import { Tip } from './curriculum';
 import { ensureAudio, triggerNotes, Tone } from '../audio/engine';
 import { SkillId, addEvidence, addXp, clearMistake, recordMistake, useAppState } from '../progress/store';
 import { InstrumentId } from '../theory/instruments';
+import { Mascot } from '../components/Art';
 
 export interface SessionResult { correct: number; answered: number; skipped: number; wrongKeys: string[]; failed: boolean; perSkill: Record<string, { ok: number; n: number }>; measured: number }
 
@@ -68,7 +69,7 @@ export function ItemSession({ items, ctx, hearts, requeueWrong = true, intro, ti
       <div className="session">
         <SessionTop progress={0} onExit={onExit} title={title} />
         <div className="tip-card">
-          <div className="mascot">🎷</div>
+          <Mascot inst={ctx.instrument} size={96} mood="happy" />
           <h2>{t.title}</h2>
           <p>{t.text}</p>
           <button className="btn primary big" onClick={() => setTip(tip + 1 < intro.length ? tip + 1 : -1)}>{tip + 1 < intro.length ? 'Siguiente' : '¡A practicar!'}</button>
@@ -127,11 +128,12 @@ export function buildItems(specs: ItemSpec[], n: number, ctx: GenCtx, avoidMic: 
 }
 
 export function Celebration({ res, xp, stars, title, onContinue, failed, extra }: { res: SessionResult; xp: number; stars: number; title: string; onContinue: () => void; failed?: boolean; extra?: React.ReactNode }) {
+  const inst = useAppState().instrument;
   const acc = res.answered ? res.correct / res.answered : 1;
   return (
     <div className={`celebrate ${failed ? 'failed' : ''}`}>
       {!failed && <div className="confetti">{Array.from({ length: 24 }, (_, i) => <i key={i} style={{ left: `${(i * 37) % 100}%`, animationDelay: `${(i % 6) * 0.12}s`, background: ['#f2b544', '#5ec2b7', '#6aa7ff', '#ff6b6b', '#b58cff'][i % 5] }} />)}</div>}
-      <div className="mascot big">{failed ? '😅' : '🎷'}</div>
+      <Mascot inst={inst} size={130} mood={failed ? 'sad' : 'happy'} />
       <h1>{failed ? 'Te quedaste sin vidas' : title}</h1>
       {!failed && <div className="stars">{[1, 2, 3].map((s) => <span key={s} className={s <= stars ? 'on' : ''}>★</span>)}</div>}
       <div className="cele-stats">

@@ -1,8 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Bus, getSoundStatus, listMidiOutputs, sampleLicenses, setBusVolume, setMidiOutput, subscribeSound, ensureAudio, triggerNotes } from '../audio/engine';
-import { COMP_LABEL, CompInstrument } from '../audio/backing';
-import { update, useAppState } from '../progress/store';
+import { useState, useSyncExternalStore } from 'react';
+import { getSoundStatus, listMidiOutputs, sampleLicenses, setMidiOutput, subscribeSound, ensureAudio, triggerNotes } from '../audio/engine';
+import { useAppState } from '../progress/store';
 import { Card } from './common';
+import { MixPanel } from './Mixer';
 
 export function useSound() {
   return useSyncExternalStore(subscribeSound, getSoundStatus, getSoundStatus);
@@ -10,15 +10,10 @@ export function useSound() {
 
 export function SoundBadge() {
   const st = useSound();
-  const s = useAppState();
-  // aplicar los volúmenes guardados
-  useEffect(() => { (Object.keys(s.sound.volumes) as Bus[]).forEach((b) => setBusVolume(b, s.sound.volumes[b])); }, [s.sound.volumes]);
   if (st.state === 'ready') return <span className="sound-badge ok" title="Instrumentos sampleados cargados">♪ Sonido real</span>;
   if (st.state === 'error') return <span className="sound-badge err" title={st.error}>♪ Sonido sintético</span>;
   return <span className="sound-badge">♪ Cargando sonidos {st.loaded}/{st.total || 8}</span>;
 }
-
-const BUS_LABEL: Record<Bus, string> = { melody: 'Tu instrumento / frases', comp: 'Acompañante (piano/Rhodes/guitarra)', bass: 'Contrabajo', drums: 'Batería' };
 
 export function SoundSettings() {
   const s = useAppState();
@@ -34,18 +29,9 @@ export function SoundSettings() {
   return (
     <Card title="Sonido">
       <p className="small">Estado: {st.state === 'ready' ? '✔ instrumentos sampleados cargados' : st.state === 'error' ? `no se pudieron cargar las muestras (${st.error}); se usa síntesis` : `cargando muestras ${st.loaded}/${st.total || 8}…`}</p>
-      <div className="row gap wrap">
-        <label className="field inline"><span>Acompañante</span>
-          <select value={s.sound.comp} onChange={(e) => update((x) => { x.sound.comp = e.target.value as CompInstrument; })}>{Object.entries(COMP_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-        </label>
-        <button className="btn" onClick={async () => { await ensureAudio(); triggerNotes(s.instrument === 'sax' ? 'sax' : s.instrument, [60, 64, 67, 71], 1.5, undefined, 0.8); }}>🔊 Probar sonido</button>
-      </div>
-      {(Object.keys(BUS_LABEL) as Bus[]).map((b) => (
-        <label key={b} className="mix-row"><span>{BUS_LABEL[b]}</span>
-          <input type="range" min={-30} max={6} value={s.sound.volumes[b]} onChange={(e) => update((x) => { x.sound.volumes[b] = +e.target.value; })} />
-          <span className="small">{s.sound.volumes[b]} dB</span>
-        </label>
-      ))}
+      <button className="btn" onClick={async () => { await ensureAudio(); triggerNotes(s.instrument === 'sax' ? 'sax' : s.instrument, [60, 64, 67, 71], 1.5, undefined, 0.8); }}>🔊 Probar sonido</button>
+      <h4>Mezclador (qué instrumentos suenan)</h4>
+      <MixPanel />
       <details>
         <summary>Avanzado: usar tus propios plugins (salida MIDI)</summary>
         <p className="small">Si tienes un sintetizador o plugin (Pianoteq, Kontakt, un DAW…), la app puede enviarle las notas por MIDI: melodía en el canal 1, acompañante en el 2, bajo en el 3 y batería en el 10. En Mac usa el «Bus IAC»; en Windows, loopMIDI. Requiere Chrome o Edge y funciona mejor con la app instalada desde su propia dirección (dentro de claude.ai el navegador puede bloquear MIDI).</p>

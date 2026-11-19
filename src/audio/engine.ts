@@ -219,6 +219,7 @@ export function triggerNotes(voice: Voice, midis: number[], durSec: number, time
   const mx = mixer;
   if (!mx || !synth || !midis.length) return;
   const t = time ?? Tone.now() + 0.03;
+  markBusy(t, durSec);
   const bus = voiceBus(voice, role);
   sendMidi(bus, midis, durSec, t, velocity);
   if (midiOnly) return;
@@ -244,12 +245,15 @@ export function triggerDrum(hit: DrumHit, time: number, velocity = 0.8, kit: 'ja
   const mx = mixer;
   if (!mx) return;
   sendMidi('drums', [GM_DRUM[hit]], 0.1, time, velocity);
+  markBusy(time, 0.2);
   if (midiOnly) return;
   const k = bank.drums[kit === 'brush' ? 'drums_brush' : 'drums_jazz'];
   const buf = k?.[hit] ?? bank.drums.drums_jazz?.[hit] ?? bank.drums.drums_jazz?.[hit.replace('brush_tap', 'snare_ghost')];
   if (buf) {
-    const src = new Tone.ToneBufferSource(buf).connect(new Tone.Gain(velocity * 1.1).connect(mx.buses.drums));
-    src.onended = () => src.dispose();
+    const g = new Tone.Gain(velocity * 1.1).connect(mx.buses.drums);
+    const src = new Tone.ToneBufferSource(buf).connect(g);
+    drumSources.add(src);
+    src.onended = () => { drumSources.delete(src); src.dispose(); g.dispose(); };
     src.start(time);
     return;
   }
@@ -258,9 +262,42 @@ export function triggerDrum(hit: DrumHit, time: number, velocity = 0.8, kit: 'ja
   else synth.noise.triggerAttackRelease('32n', time, velocity * 0.6);
 }
 
-export function click(time: number, accent: boolean) {
-  synth?.click.triggerAttackRelease(accent ? 'C6' : 'G5', 0.03, time, accent ? 0.9 : 0.55);
+// clic de metrónomo: un «bip» corto generado una vez y reproducido como buffer, para que cada clic
+// agendado pueda cancelarse (al volver a escuchar o con «Detener audio")
+const clickBufs: { hi?: Tone.ToneAudioBuffer; lo?: Tone.ToneAudioBuffer } = {};
+function makeClick(freq: number) {
+  const ctx = Tone.getContext().rawContext as BaseAudioContext;
+  const sr = ctx.sampleRate;
+  const n = Math.floor(sr * 0.05);
+  const b = ctx.createBuffer(1, n, sr);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) { const t = i / sr; d[i] = Math.sin(2 * Math.PI * freq * t) * Math.exp(-t * 85) * 0.9; }
+  return new Tone.ToneAudioBuffer(b);
 }
+export function click(time: number, accent: boolean) {
+  const mx = mixer;
+  if (!mx) return;
+  markBusy(time, 0.05);
+  const buf = accent ? (clickBufs.hi ??= makeClick(1760)) : (clickBufs.lo ??= makeClick(1320));
+  const g = new Tone.Gain(accent ? 0.55 : 0.36).connect(mx.master);
+  const src = new Tone.ToneBufferSource(buf).connect(g);
+  drumSources.add(src);
+  src.onended = () => { drumSources.delete(src); src.dispose(); g.dispose(); };
+  src.start(time);
+}
+
+/** Cancela golpes y clics ya agendados (sin tocar acompañamientos), p.ej. al volver a pulsar «Escuchar». */
+export function cancelScheduled() {
+  drumSources.forEach((src) => { try { src.stop(); } catch { /* ya parado */ } });
+  drumSources.clear();
+  Object.values(bank.samplers).forEach((s) => s.releaseAll());
+}
+/** Espera a que terminen de cargar las muestras (como mucho `ms`). */
+export async function waitSamples(ms = 3000) {
+  if (!loadPromise) return;
+  await Promise.race([loadPromise, new Promise((r) => setTimeout(r, ms))]);
+}
+export const drumsLoaded = () => !!bank.drums.drums_jazz;
 
 export interface NoteEvent {
   midi: number | number[];
@@ -278,6 +315,66 @@ export function stopSequence() {
   seqEndTimer = null;
   Object.values(bank.samplers).forEach((s) => s.releaseAll());
   synth?.sax.triggerRelease();
+  endActivity('seq');
+}
+
+// ---------------- actividad global: botón «Detener audio» ----------------
+// Todo lo que suena más de un instante se registra aquí con su función de parada. El botón flotante
+// aparece mientras haya algo registrado (o notas agendadas a futuro) y `stopAllAudio` lo detiene todo.
+const activity = new Map<string, () => void>();
+const activitySubs = new Set<() => void>();
+const drumSources = new Set<Tone.ToneBufferSource>();
+let busyUntil = 0;
+const notifyActivity = () => activitySubs.forEach((f) => f());
+function markBusy(t: number, dur: number) {
+  // solo cuenta lo agendado a futuro (secuencias, demostraciones); un clic en una nota no muestra el botón
+  if (!mixer || t - Tone.now() < 0.4) return;
+  const was = busyUntil > Tone.now();
+  busyUntil = Math.max(busyUntil, t + dur);
+  if (!was) notifyActivity();
+}
+/** Registra algo que está sonando. Si ya había algo con el mismo id (p.ej. otro acompañamiento), lo para antes. */
+export function registerActivity(id: string, stop: () => void) {
+  const prev = activity.get(id);
+  activity.delete(id);
+  if (prev && prev !== stop) { try { prev(); } catch { /* ya parado */ } }
+  activity.set(id, stop);
+  notifyActivity();
+}
+export function endActivity(id: string) {
+  if (activity.delete(id)) notifyActivity();
+}
+export function isAudioActive() {
+  return activity.size > 0 || (!!mixer && busyUntil > Tone.now());
+}
+export function subscribeActivity(f: () => void) {
+  activitySubs.add(f);
+  return () => { activitySubs.delete(f); };
+}
+export const STOP_ALL_EVENT = 'mil:stopall';
+/** Detiene absolutamente todo lo que suena (acompañamientos, frases, metrónomo, estudio, demostraciones). */
+export function stopAllAudio() {
+  const fns = [...activity.values()];
+  activity.clear();
+  fns.forEach((f) => { try { f(); } catch { /* ignorar */ } });
+  stopSequence();
+  const tr = Tone.getTransport();
+  tr.stop();
+  tr.cancel();
+  Object.values(bank.samplers).forEach((s) => s.releaseAll());
+  drumSources.forEach((src) => { try { src.stop(); } catch { /* ya parado */ } });
+  drumSources.clear();
+  if (synth) { synth.sax.triggerRelease(); synth.bass.triggerRelease(); synth.piano.releaseAll(); synth.guitar.releaseAll(); }
+  if (midiOut) for (let ch = 0; ch < 16; ch++) midiOut.send([0xb0 | ch, 123, 0]);
+  busyUntil = 0;
+  window.dispatchEvent(new Event(STOP_ALL_EVENT));
+  notifyActivity();
+}
+
+/** Mezcla global (capas activas y sonido de teclado), leída en vivo en cada nota del acompañamiento. */
+export function getMix() {
+  const s = getState().sound;
+  return { layers: s.layers, keys: s.keys };
 }
 
 /** Proporción del swing según el tempo: tresillo a tempo lento/medio, más recto a tempo rápido. */
@@ -302,6 +399,7 @@ export async function playSequence(
 ) {
   await ensureAudio();
   stopSequence();
+  registerActivity('seq', () => { stopSequence(); opts.onEnd?.(); });
   const spb = 60 / bpm;
   const t0 = Tone.now() + 0.08;
   const r = swingRatio(bpm);
@@ -318,7 +416,7 @@ export async function playSequence(
     end = Math.max(end, stop);
     if (opts.onNote) seqTimers.push(window.setTimeout(() => opts.onNote!(idx), (start * spb + 0.08) * 1000));
   });
-  seqEndTimer = window.setTimeout(() => opts.onEnd?.(), (end * spb + 0.3) * 1000);
+  seqEndTimer = window.setTimeout(() => { seqEndTimer = null; endActivity('seq'); opts.onEnd?.(); }, (end * spb + 0.3) * 1000);
 }
 
 export { Tone };

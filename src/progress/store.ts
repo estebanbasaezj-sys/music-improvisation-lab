@@ -4,6 +4,10 @@
 import { useSyncExternalStore } from 'react';
 import { InstrumentId, SaxType } from '../theory/instruments';
 
+/** Capas del mezclador global: qué instrumentos suenan en cualquier acompañamiento. */
+export interface Layers { drums: boolean; bass: boolean; piano: boolean; guitar: boolean; melody: boolean; click: boolean }
+export const DEFAULT_LAYERS: Layers = { drums: true, bass: true, piano: true, guitar: false, melody: true, click: false };
+
 export type SkillId =
   | 'oido' | 'ritmo' | 'armonia' | 'escalas' | 'acordes' | 'improvisacion' | 'repertorio'
   | 's_fraseo' | 's_articulacion' | 's_vocabulario' | 's_resolucion'
@@ -81,7 +85,7 @@ export interface AppState {
   vocab: VocabItem[];
   game: GameState;
   path: Record<InstrumentId, PathState>;
-  sound: { comp: 'piano' | 'rhodes' | 'guitar'; volumes: { melody: number; comp: number; bass: number; drums: number } };
+  sound: { keys: 'piano' | 'rhodes'; layers: Layers; volumes: { melody: number; comp: number; bass: number; drums: number } };
 }
 
 export interface GameState {
@@ -128,7 +132,7 @@ export const initialState = (): AppState => ({
   vocab: [],
   game: { xp: 0, xpByDay: {}, dailyGoal: 20, streak: { count: 0, lastDay: null, freezes: 1, best: 0 }, achievements: [], micOk: true },
   path: { sax: emptyPath(), guitar: emptyPath(), piano: emptyPath() },
-  sound: { comp: 'piano', volumes: { melody: 0, comp: -5, bass: -2, drums: -6 } },
+  sound: { keys: 'piano', layers: { ...DEFAULT_LAYERS }, volumes: { melody: 0, comp: -5, bass: -2, drums: -6 } },
 });
 
 // ---------- adaptador de almacenamiento ----------
@@ -180,8 +184,19 @@ function merge(loaded: AppState | null): AppState {
       guitar: { ...emptyPath(), ...loaded.path?.guitar },
       piano: { ...emptyPath(), ...loaded.path?.piano },
     },
-    sound: { ...base.sound, ...loaded.sound, volumes: { ...base.sound.volumes, ...loaded.sound?.volumes } },
+    sound: migrateSound(base.sound, loaded.sound),
   };
+}
+
+/** Versiones antiguas guardaban un único acompañante (`comp`); ahora cada capa se activa por separado. */
+function migrateSound(base: AppState['sound'], loaded?: Partial<AppState['sound']> & { comp?: string }): AppState['sound'] {
+  const out: AppState['sound'] = { ...base, ...loaded, layers: { ...base.layers, ...loaded?.layers }, volumes: { ...base.volumes, ...loaded?.volumes } };
+  if (loaded?.comp && !loaded.layers) {
+    if (loaded.comp === 'guitar') { out.layers.guitar = true; out.layers.piano = false; }
+    if (loaded.comp === 'rhodes') out.keys = 'rhodes';
+  }
+  delete (out as { comp?: string }).comp;
+  return out;
 }
 
 export function setAdapter(a: StorageAdapter) {
@@ -214,11 +229,13 @@ export function replaceState(s: AppState) {
 }
 
 // ---------- lógica de progreso ----------
-export const today = () => new Date().toISOString().slice(0, 10);
-const addDays = (d: string, n: number) => {
+/** Fecha local AAAA-MM-DD (la racha cambia a medianoche de tu zona horaria, como en Duolingo). */
+export const localDay = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+export const today = () => localDay(new Date());
+export const addDays = (d: string, n: number) => {
   const dt = new Date(d + 'T12:00:00');
   dt.setDate(dt.getDate() + n);
-  return dt.toISOString().slice(0, 10);
+  return localDay(dt);
 };
 
 const WEIGHT: Record<EvidenceSource, number> = { autoevaluacion: 1, prueba: 1.5, quiz: 2, deteccion: 2, valoracion: 1 };

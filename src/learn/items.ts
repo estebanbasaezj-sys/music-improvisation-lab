@@ -36,7 +36,16 @@ export type ItemSpec =
   | { t: 'quiz'; kind: QuizKind }
   | { t: 'play-chord'; chords: string[] };
 
-export interface AudioSpec { seq: { midi: number | number[]; start: number; dur: number }[]; bpm: number; voice: 'piano' | 'inst' | 'click'; swing?: boolean }
+export interface AudioSpec {
+  seq: { midi: number | number[]; start: number; dur: number }[];
+  bpm: number;
+  voice: 'piano' | 'inst' | 'click';
+  swing?: boolean;
+  /** tiempos de cuenta previa (clics de metrónomo) antes del ritmo, con contador visual */
+  countIn?: number;
+  /** duración del ritmo en tiempos (para el contador) */
+  beats?: number;
+}
 
 export type Answer =
   | { type: 'choice'; options: string[]; correct: number; optionKind?: 'text' | 'fingering' | 'rhythm' }
@@ -180,7 +189,7 @@ export function generateItem(spec: ItemSpec, ctx: GenCtx): Item {
       const target = pats[0];
       const { onsets, durs } = rhythmOnsets(parsePattern(target));
       const opts = shuffle(r, pats);
-      return { ...base, prompt: 'Escucha el ritmo (después de 4 clics): ¿cuál es?', audio: { seq: onsets.map((o, i) => ({ midi: 72, start: 4 + o, dur: Math.min(durs[i], 0.9) })), bpm: 80, voice: 'click' }, autoplay: true,
+      return { ...base, prompt: 'Escucha el ritmo: ¿cuál es?', sub: 'Primero suena una cuenta de 4 clics (1, 2, 3, 4) y luego el ritmo, con un pulso suave de fondo.', audio: { seq: onsets.map((o, i) => ({ midi: 72, start: o, dur: Math.min(durs[i], 0.9) })), bpm: 80, voice: 'click', countIn: 4, beats: Math.max(4, Math.ceil(onsets[onsets.length - 1] + durs[durs.length - 1] - 1e-9)) }, autoplay: true,
         answer: { type: 'choice', options: opts, correct: opts.indexOf(target), optionKind: 'rhythm' }, explain: `Era: ${rhythmLabel(parsePattern(target))}.`, skills: ['ritmo'] };
     }
     case 'read-note': {
@@ -247,7 +256,7 @@ export function generateItem(spec: ItemSpec, ctx: GenCtx): Item {
       const pat = parsePattern(pick(r, spec.patterns));
       const { onsets, beats } = rhythmOnsets(pat);
       return { ...base, prompt: 'Toca este ritmo', sub: `Escucha 4 clics de cuenta y pulsa el botón grande (o la barra espaciadora) en cada nota. ${rhythmLabel(pat)}.`, rhythm: pat,
-        audio: { seq: onsets.map((o, i) => ({ midi: 72, start: o, dur: Math.min(0.9, rhythmOnsets(pat).durs[i]) })), bpm: spec.bpm, voice: 'click', swing: spec.swing },
+        audio: { seq: onsets.map((o, i) => ({ midi: 72, start: o, dur: Math.min(0.9, rhythmOnsets(pat).durs[i]) })), bpm: spec.bpm, voice: 'click', swing: spec.swing, countIn: 4, beats },
         answer: { type: 'rhythm', onsets: spec.swing ? onsets.map((o) => (Math.abs((o % 1) - 0.5) < 1e-6 ? Math.floor(o) + 2 / 3 : o)) : onsets, bpm: spec.bpm, beats }, explain: 'La precisión rítmica se mide con el reloj de audio: cada pulsación debe caer cerca de su nota.', skills: ['ritmo'] };
     }
     case 'build-chord': {

@@ -9,6 +9,7 @@ import { ChordDiagram } from '../instruments/ChordDiagram';
 import { InstrumentView, ViewNote } from './InstrumentView';
 import { chordViewNotes } from './ChordsView';
 import { Segmented, playMidi, useTransposer } from './common';
+import { LayerToggles, useOnStopAll } from './Mixer';
 
 export type Display = 'chords' | 'guide' | 'scales' | 'arpeggios';
 
@@ -34,22 +35,13 @@ export function BackingPanel({ events, style: style0, bpm: bpm0, display: displa
   const [cur, setCur] = useState(0);
   const [beat, setBeat] = useState<number | null>(null);
   const [chorus, setChorus] = useState(0);
-  const [mute, setMute] = useState({ piano: false, bass: false, drums: false });
   const [countIn, setCountIn] = useState(true);
-  const [metro, setMetro] = useState(false);
-  const [melodyOn, setMelodyOn] = useState(true);
   const [concert, setConcert] = useState(false);
   const player = useRef<BackingPlayer | null>(null);
 
   useEffect(() => { setStyle(style0); setBpm(bpm0); }, [style0, bpm0]);
   useEffect(() => () => player.current?.stop(), []);
-  useEffect(() => {
-    if (player.current) {
-      player.current.opts.mute = mute;
-      player.current.opts.metronome = metro;
-      player.current.opts.melodyOn = melodyOn;
-    }
-  }, [mute, metro, melodyOn]);
+  useOnStopAll(() => { setPlaying(false); setBeat(null); onPlayingChange?.(false); });
   // si cambia la progresión (tonalidad, estilo) mientras suena, reiniciar
   useEffect(() => {
     if (playing) start();
@@ -59,9 +51,10 @@ export function BackingPanel({ events, style: style0, bpm: bpm0, display: displa
   const start = async () => {
     player.current?.stop();
     const p = new BackingPlayer({
-      style, bpm, countIn, metronome: metro, mute, melodyOn,
+      style, bpm, countIn, metronome: false,
       melodyVoice: t.instrument === 'guitar' ? 'guitar' : t.instrument === 'piano' ? 'piano' : 'sax',
       onChord: (i) => setCur(i),
+      onStop: () => { setPlaying(false); setBeat(null); onPlayingChange?.(false); },
       onBeat: (b, c) => { setBeat(b); setChorus(c); },
     });
     player.current = p;
@@ -141,12 +134,8 @@ export function BackingPanel({ events, style: style0, bpm: bpm0, display: displa
         </div>
       </div>
       <div className="mixer">
-        {(['piano', 'bass', 'drums'] as const).map((k) => (
-          <label key={k} className={`toggle ${mute[k] ? 'off' : ''}`}><input type="checkbox" checked={!mute[k]} onChange={() => setMute({ ...mute, [k]: !mute[k] })} />{{ piano: 'Piano', bass: 'Bajo', drums: 'Batería' }[k]}</label>
-        ))}
-        <label className="toggle"><input type="checkbox" checked={metro} onChange={() => setMetro(!metro)} />Metrónomo</label>
+        <LayerToggles hide={melody && melody.length > 0 ? [] : ['melody']} />
         <label className="toggle"><input type="checkbox" checked={countIn} onChange={() => setCountIn(!countIn)} />Cuenta 4</label>
-        {melody && melody.length > 0 && <label className="toggle"><input type="checkbox" checked={melodyOn} onChange={() => setMelodyOn(!melodyOn)} />Frase guía</label>}
         {t.isSax && <label className="toggle"><input type="checkbox" checked={concert} onChange={() => setConcert(!concert)} />Cifrado de concierto</label>}
       </div>
       {t.isSax && <div className="muted small">Cifrado {concert ? 'de concierto (como lo lee el pianista)' : `transpuesto: ${t.label}`}. El audio suena en concierto.</div>}

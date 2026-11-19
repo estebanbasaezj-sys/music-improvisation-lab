@@ -173,6 +173,7 @@ function MetronomeLab() {
   const [beat, setBeat] = useState(-1);
   const [bpb, setBpb] = useState(4);
   useEffect(() => () => stopMetronome(), []);
+  const metroOff = () => { setOn(false); setBeat(-1); };
   useEffect(() => { if (on) setTransportBpm(bpm); }, [bpm, on]);
   return (
     <Card title="Metrónomo">
@@ -181,10 +182,10 @@ function MetronomeLab() {
         <input type="range" min={30} max={280} value={bpm} onChange={(e) => setBpm(+e.target.value)} />
         <div className="row gap">
           <button className="btn" onClick={() => setBpm(Math.max(30, bpm - 5))}>−5</button>
-          <button className={`btn big ${on ? 'stop' : 'primary'}`} onClick={() => { if (on) { stopMetronome(); setOn(false); setBeat(-1); } else { startMetronome(bpm, bpb, setBeat); setOn(true); } }}>{on ? '■ Parar' : '▶ Iniciar'}</button>
+          <button className={`btn big ${on ? 'stop' : 'primary'}`} onClick={() => { if (on) { stopMetronome(); setOn(false); setBeat(-1); } else { startMetronome(bpm, bpb, setBeat, metroOff); setOn(true); } }}>{on ? '■ Parar' : '▶ Iniciar'}</button>
           <button className="btn" onClick={() => setBpm(Math.min(280, bpm + 5))}>+5</button>
         </div>
-        <Segmented size="sm" value={bpb} onChange={(v) => { setBpb(v); if (on) startMetronome(bpm, v, setBeat); }} options={[2, 3, 4].map((n) => ({ value: n, label: `${n}/4` }))} />
+        <Segmented size="sm" value={bpb} onChange={(v) => { setBpb(v); if (on) startMetronome(bpm, v, setBeat, metroOff); }} options={[2, 3, 4].map((n) => ({ value: n, label: `${n}/4` }))} />
         <div className="beats">{Array.from({ length: bpb }, (_, i) => <span key={i} className={`beat ${beat === i ? (i === 0 ? 'count' : 'on') : ''}`} />)}</div>
         <p className="muted small">Consejo de swing: pon el metrónomo a la mitad del tempo y siente los clics como tiempos 2 y 4.</p>
       </div>

@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { fingeringFor } from './fingerings';
 import { TimeStaff } from '../instruments/TimeStaff';
 import { rhythmOnsets, scoreRhythm } from './items';
-import { Tone, ensureAudio, triggerDrum, click } from '../audio/engine';
+import { Tone, ensureAudio, triggerDrum, click, cancelScheduled, waitSamples } from '../audio/engine';
+import { ClapListener } from '../recording/onsets';
 import { NoteSegmenter, PitchListener, compareSequences, freqToMidi, isEmbedded, micErrorText } from '../recording/pitch';
 import { UploadCheck } from './UploadCheck';
 import { chordScores, chromaFromMagnitudes, PC_NAMES } from '../audio/analysis';
@@ -45,65 +46,115 @@ export function RhythmStaff({ pattern }: { pattern: string[] }) {
   return <div className="rhythm-staff"><TimeStaff notes={notes} chords={[]} totalBeats={Math.max(4, beats)} showLabels={false} /></div>;
 }
 
-export function RhythmTap({ pattern, bpm, swing, onResult }: { pattern: string[]; bpm: number; swing?: boolean; onResult: (ok: boolean, detail: string) => void }) {
+export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', hideStaff }: { pattern: string[]; bpm: number; swing?: boolean; onResult: (ok: boolean, detail: string) => void; initialMode?: 'pad' | 'mic'; hideStaff?: boolean }) {
   const [phase, setPhase] = useState<'idle' | 'count' | 'tap' | 'done'>('idle');
   const [taps, setTaps] = useState<number[]>([]);
   const [beatNow, setBeatNow] = useState(-1);
+  const [mode, setMode] = useState<'pad' | 'mic'>(initialMode);
+  const [micErr, setMicErr] = useState('');
+  const [level, setLevel] = useState(0);
   const t0 = useRef(0);
   const tapsRef = useRef<number[]>([]);
   const timer = useRef<number[]>([]);
+  const clap = useRef<ClapListener | null>(null);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
   const { onsets, beats } = rhythmOnsets(pattern);
   const exp = swing ? onsets.map((o) => (Math.abs((o % 1) - 0.5) < 1e-6 ? Math.floor(o) + 2 / 3 : o)) : onsets;
   const spb = 60 / bpm;
-  useEffect(() => () => timer.current.forEach(clearTimeout), []);
+  const stopMic = () => { clap.current?.stop(); clap.current = null; setLevel(0); };
+  useEffect(() => () => { timer.current.forEach(clearTimeout); stopMic(); }, []);
+  const outLat = () => {
+    const ctx = Tone.getContext().rawContext as AudioContext;
+    return (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+  };
+  /** registra un golpe en el instante `t` (reloj del AudioContext, sin la anticipación de Tone) */
+  const register = (t: number) => {
+    if (phaseRef.current !== 'tap' && phaseRef.current !== 'count') return;
+    const beat = (t - outLat() - t0.current) / spb;
+    if (beat < -0.6 || beat > beats + 0.6) return;
+    tapsRef.current.push(beat);
+    setTaps([...tapsRef.current]);
+  };
   const listen = async () => {
     await ensureAudio();
-    const now = Tone.now() + 0.1;
+    await waitSamples(3000);
+    cancelScheduled();
+    const now = Tone.now() + 0.2;
     exp.forEach((o) => triggerDrum('stick', now + o * spb, 0.9));
   };
   const start = async () => {
     await ensureAudio();
+    await waitSamples(3000);
+    timer.current.forEach(clearTimeout);
+    timer.current = [];
     tapsRef.current = [];
     setTaps([]);
-    const now = Tone.now() + 0.15;
+    setMicErr('');
+    if (mode === 'mic' && !clap.current) {
+      try {
+        const cl = new ClapListener();
+        await cl.start((e) => register(e.time), (r) => setLevel(r));
+        clap.current = cl;
+      } catch (e) {
+        setMicErr(micErrorText(e));
+        setMode('pad');
+        return;
+      }
+    }
+    const lead = 0.3;
+    const now = Tone.now() + lead;
     for (let b = 0; b < 4; b++) click(now + b * spb, b === 0);
-    for (let b = 0; b < Math.ceil(beats); b++) triggerDrum('hh_pedal', now + (4 + b) * spb, 0.5);
+    // con micrófono no suena el pulso durante el ritmo: el micrófono lo confundiría con tus palmas
+    if (mode === 'pad') for (let b = 0; b < Math.ceil(beats); b++) triggerDrum('hh_pedal', now + (4 + b) * spb, 0.5);
     t0.current = now + 4 * spb;
+    const wait = (now - Tone.immediate()) * 1000;
     setPhase('count');
-    for (let b = 0; b < 4 + Math.ceil(beats); b++) timer.current.push(window.setTimeout(() => setBeatNow(b - 4), (0.15 + b * spb) * 1000));
-    timer.current.push(window.setTimeout(() => setPhase('tap'), (0.15 + 3.5 * spb) * 1000));
-    timer.current.push(window.setTimeout(() => finish(), (0.15 + (4 + beats + 0.6) * spb) * 1000));
+    for (let b = 0; b < 4 + Math.ceil(beats); b++) timer.current.push(window.setTimeout(() => setBeatNow(b - 4), wait + b * spb * 1000));
+    timer.current.push(window.setTimeout(() => setPhase('tap'), wait + 3.5 * spb * 1000));
+    timer.current.push(window.setTimeout(() => finish(), wait + (4 + beats + 0.6) * spb * 1000));
   };
   const tap = () => {
-    if (phase !== 'tap' && phase !== 'count') return;
-    const ctx = Tone.getContext().rawContext as AudioContext;
-    const lat = (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
-    const beat = (Tone.now() - lat - t0.current) / spb;
-    if (beat < -0.6) return;
-    tapsRef.current.push(beat);
-    setTaps([...tapsRef.current]);
+    if (mode !== 'pad' || (phase !== 'tap' && phase !== 'count')) return;
+    register(Tone.immediate());
     triggerDrum('stick', Tone.now(), 0.5);
   };
   const finish = () => {
     setPhase('done');
+    stopMic();
     const tol = bpm < 90 ? 0.22 : 0.18;
     const r = scoreRhythm(exp, tapsRef.current, tol);
     const ms = Math.round(r.meanErr * spb * 1000);
-    onResult(r.ok, `${r.hit}/${r.total} notas a tiempo${r.extra ? `, ${r.extra} toque(s) de más` : ''}. ${r.hit ? `Tendencia: ${Math.abs(ms) < 25 ? 'muy preciso' : ms < 0 ? `te adelantas ~${-ms} ms` : `te atrasas ~${ms} ms`}.` : ''}`);
+    const src = mode === 'mic' ? ' (medido con el micrófono)' : '';
+    onResult(r.ok, `${r.hit}/${r.total} notas a tiempo${r.extra ? `, ${r.extra} golpe(s) de más` : ''}${src}. ${r.hit ? `Tendencia: ${Math.abs(ms) < 25 ? 'muy preciso' : ms < 0 ? `te adelantas ~${-ms} ms` : `te atrasas ~${ms} ms`}.` : ''}`);
   };
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.code === 'Space') { e.preventDefault(); tap(); } };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   });
+  const live = phase === 'tap' || phase === 'count';
   return (
     <div className="rhythm-tap">
-      <RhythmStaff pattern={pattern} />
+      {!hideStaff && <RhythmStaff pattern={pattern} />}
+      <div className="segmented sm tap-mode" role="radiogroup" aria-label="Cómo vas a tocar">
+        <button className={mode === 'pad' ? 'on' : ''} disabled={live} onClick={() => setMode('pad')}>👆 Botón o barra espaciadora</button>
+        <button className={mode === 'mic' ? 'on' : ''} disabled={live} onClick={() => setMode('mic')}>👏 Palmas (micrófono)</button>
+      </div>
+      {micErr && <p className="warn small">{micErr} Puedes seguir con el botón.</p>}
       <div className="row gap wrap center">
         <button className="btn" onClick={listen}>🔊 Escuchar</button>
         {phase === 'idle' || phase === 'done' ? <button className="btn primary" onClick={start}>{phase === 'done' ? 'Repetir' : '▶ Empezar (4 clics de cuenta)'}</button> : <span className="count">{beatNow < 0 ? `Cuenta… ${beatNow + 5}` : `Tiempo ${(beatNow % 4) + 1}`}</span>}
       </div>
-      <button className={`tap-pad ${phase === 'tap' || phase === 'count' ? 'live' : ''}`} onPointerDown={tap}>TOCA AQUÍ<small>(o barra espaciadora)</small></button>
+      {mode === 'pad' ? (
+        <button className={`tap-pad ${live ? 'live' : ''}`} onPointerDown={tap}>TOCA AQUÍ<small>(o barra espaciadora)</small></button>
+      ) : (
+        <div className={`tap-pad mic ${live ? 'live' : ''}`}>
+          👏 {live ? (phase === 'count' ? 'Escucha la cuenta…' : '¡Aplaude el ritmo!') : 'Aplaude el ritmo después de la cuenta'}
+          <small>{live ? 'El micrófono detecta cada palmada' : 'Mejor con auriculares o con el volumen bajo, para que el micrófono no oiga los clics'}</small>
+          {live && <span className="mic-meter"><span style={{ width: `${Math.min(100, level * 400)}%` }} /></span>}
+        </div>
+      )}
       <div className="tap-dots">{taps.map((t, i) => <span key={i} style={{ left: `${Math.max(0, Math.min(100, (t / beats) * 100))}%` }} />)}{exp.map((o, i) => <i key={i} style={{ left: `${(o / beats) * 100}%` }} />)}</div>
     </div>
   );

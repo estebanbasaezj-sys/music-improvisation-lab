@@ -4,31 +4,73 @@ import { FingeringDiagram, MicChord, MicNote, MicSeq, OrderTiles, PairsMatch, Rh
 import { Keyboard } from '../instruments/Keyboard';
 import { Fretboard, Mark } from '../instruments/Fretboard';
 import { Staff } from '../instruments/Staff';
-import { Tone, ensureAudio, playSequence, stopSequence, triggerDrum, triggerNotes, swingBeat } from '../audio/engine';
+import { Tone, cancelScheduled, click, drumsLoaded, ensureAudio, playSequence, stopSequence, triggerDrum, triggerNotes, swingBeat, waitSamples } from '../audio/engine';
 import { voiceFor } from '../components/common';
 import { pitchFromMidi } from '../theory/notes';
 
 export interface Verdict { correct: boolean; detail: string; measured: boolean; skipped?: boolean }
 
-export async function playItemAudio(item: Item, ctx: GenCtx) {
-  if (!item.audio) return;
+export interface RhythmTimeline { t0: number; spb: number; countIn: number; beats: number }
+
+/** Reproduce el audio del ejercicio. Para ritmos devuelve la línea de tiempo (cuenta + compás) del contador visual. */
+export async function playItemAudio(item: Item, ctx: GenCtx): Promise<RhythmTimeline | null> {
+  if (!item.audio) return null;
   await ensureAudio();
+  // la primera vez las muestras pueden estar cargando: esperar para que suene con el timbre correcto
+  await waitSamples(3000);
   const a = item.audio;
   if (a.voice === 'click') {
+    cancelScheduled(); // si se pulsa «Escuchar» de nuevo, no se superponen dos reproducciones
     const spb = 60 / a.bpm;
-    const now = Tone.now() + 0.1;
-    a.seq.forEach((n) => triggerDrum('stick', now + (a.swing ? swingBeat(n.start) : n.start) * spb, 0.9));
-    return;
+    const t0 = Tone.now() + 0.3; // margen para que el primer golpe nunca llegue tarde
+    const ci = a.countIn ?? 0;
+    const beats = a.beats ?? Math.ceil(Math.max(...a.seq.map((n) => n.start + n.dur)));
+    for (let b = 0; b < ci; b++) click(t0 + b * spb, b === 0);
+    // pulso suave durante el ritmo para no perder la cuenta (solo con muestras: el respaldo sintético se confundiría con el ritmo)
+    if (ci && drumsLoaded()) for (let b = 0; b < beats; b++) triggerDrum('hh_pedal', t0 + (ci + b) * spb, 0.3);
+    a.seq.forEach((n) => triggerDrum('stick', t0 + (ci + (a.swing ? swingBeat(n.start) : n.start)) * spb, 0.95));
+    return ci ? { t0, spb, countIn: ci, beats } : null;
   }
   playSequence(a.voice === 'inst' ? voiceFor(ctx.instrument) : 'piano', a.seq, a.bpm, { swing: a.swing });
+  return null;
+}
+
+/** Contador visual: «1 2 3 4» de cuenta y después los tiempos del compás del ritmo. */
+function RhythmCounter({ tl }: { tl: RhythmTimeline }) {
+  // reloj real del audio (Tone.now() incluye 0,1 s de anticipación de agenda)
+  const [now, setNow] = useState(() => Tone.immediate());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Tone.immediate()), 40);
+    return () => clearInterval(id);
+  }, [tl]);
+  const pos = (now - tl.t0) / tl.spb; // en tiempos desde el primer clic
+  const cur = Math.floor(pos);
+  const total = tl.countIn + tl.beats;
+  const phase = pos < 0 ? 'ready' : cur < tl.countIn ? 'count' : cur < total ? 'play' : 'done';
+  return (
+    <div className={`rhythm-counter ${phase}`} aria-live="polite">
+      <div className="rc-group">
+        <span className="rc-label">Cuenta</span>
+        {Array.from({ length: tl.countIn }, (_, b) => <span key={b} className={`rc-beat count ${cur === b ? 'on' : cur > b ? 'past' : ''}`}>{b + 1}</span>)}
+      </div>
+      <div className="rc-group">
+        <span className="rc-label">Ritmo</span>
+        {Array.from({ length: tl.beats }, (_, b) => <span key={b} className={`rc-beat ${cur === tl.countIn + b ? 'on' : cur > tl.countIn + b ? 'past' : ''}`}>{(b % 4) + 1}</span>)}
+      </div>
+      <span className="rc-msg">{phase === 'ready' ? 'Preparado…' : phase === 'count' ? `Cuenta: ${cur + 1}` : phase === 'play' ? '¡Escucha el ritmo!' : 'Elige la respuesta (puedes volver a escuchar)'}</span>
+    </div>
+  );
 }
 
 export function ItemView({ item, ctx, onVerdict, locked }: { item: Item; ctx: GenCtx; onVerdict: (v: Verdict) => void; locked: boolean }) {
   const [tapped, setTapped] = useState<number[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
+  const [timeline, setTimeline] = useState<RhythmTimeline | null>(null);
+  const [clapRes, setClapRes] = useState<{ ok: boolean; detail: string } | null>(null);
+  const play = async () => setTimeline(await playItemAudio(item, ctx));
   useEffect(() => {
-    setTapped([]); setPicked(null);
-    if (item.autoplay) { const id = setTimeout(() => playItemAudio(item, ctx), 250); return () => { clearTimeout(id); stopSequence(); }; }
+    setTapped([]); setPicked(null); setTimeline(null); setClapRes(null);
+    if (item.autoplay) { const id = setTimeout(play, 250); return () => { clearTimeout(id); stopSequence(); }; }
     return () => stopSequence();
   }, [item]); // eslint-disable-line react-hooks/exhaustive-deps
   const a = item.answer;
@@ -52,7 +94,8 @@ export function ItemView({ item, ctx, onVerdict, locked }: { item: Item; ctx: Ge
     <div className="item">
       <h2 className="item-prompt">{item.prompt}</h2>
       {item.sub && <p className="item-sub">{item.sub}</p>}
-      {item.audio && <button className="btn audio-btn" onClick={() => playItemAudio(item, ctx)}>🔊 Escuchar</button>}
+      {item.audio && <button className="btn audio-btn" onClick={play}>🔊 {timeline ? 'Escuchar otra vez' : 'Escuchar'}</button>}
+      {timeline && <RhythmCounter tl={timeline} />}
       {item.staff && <div className="item-staff"><Staff pitches={item.staff.pitches} durations={item.staff.durations} /></div>}
       {item.rhythm && a.type !== 'rhythm' && <RhythmStaff pattern={item.rhythm} />}
       {item.view?.type === 'fingering' && item.view.fingering && <div className="center"><FingeringDiagram note={item.view.fingering} size={1.1} /></div>}
@@ -72,6 +115,13 @@ export function ItemView({ item, ctx, onVerdict, locked }: { item: Item; ctx: Ge
             </button>
           ))}
         </div>
+      )}
+      {a.type === 'choice' && a.optionKind === 'rhythm' && locked && (
+        <details className="clap-practice">
+          <summary>👏 Extra: aplaude este ritmo y la app evalúa tus palmas (micrófono)</summary>
+          <RhythmTap pattern={parsePattern(a.options[a.correct])} bpm={item.audio?.bpm ?? 80} initialMode="mic" hideStaff onResult={(ok, detail) => setClapRes({ ok, detail })} />
+          {clapRes && <p className={clapRes.ok ? 'ok' : 'warn'}>{clapRes.ok ? '¡Bien! ' : 'Casi: '}{clapRes.detail}</p>}
+        </details>
       )}
       {a.type === 'tap' && a.multi && (
         <div className="row gap center">

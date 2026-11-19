@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Analysis, TNote, analyzeAudio, decodeAudio, removeHarmonics, secToBeat, skyline, stretchBuffer, transcribeNotes } from '../audio/studio';
 import { PC_NAMES } from '../audio/analysis';
-import { Tone, ensureAudio, playSequence, stopSequence } from '../audio/engine';
+import { Tone, ensureAudio, playSequence, stopSequence, registerActivity, endActivity } from '../audio/engine';
 import { TimeStaff } from '../instruments/TimeStaff';
 import { parseChart, ChordEvent } from '../theory/progressions';
 import { parseChord, chordSymbol } from '../theory/chords';
@@ -86,7 +86,11 @@ export function StudioPage() {
     src.current = null;
     startInfo.current = null;
     setPlaying(false);
+    endActivity('studio');
   };
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  const studioStopper = useRef(() => stopRef.current()).current;
   const play = async (fromOrig = pos) => {
     if (!proc) return;
     await ensureAudio();
@@ -101,8 +105,9 @@ export function StudioPage() {
     if (sel && loop && (off < a || off >= b)) off = a;
     if (sel && loop) { s.loop = true; s.loopStart = a; s.loopEnd = b; }
     s.start(ctx.currentTime + 0.05, off);
-    s.onended = () => { if (src.current === s) { setPlaying(false); } };
+    s.onended = () => { if (src.current === s) { setPlaying(false); endActivity('studio'); } };
     src.current = s;
+    registerActivity('studio', studioStopper);
     startInfo.current = { ctxT: ctx.currentTime + 0.05, origPos: off * speed };
     setPlaying(true);
     const tick = () => {

@@ -43,7 +43,9 @@ export function ImprovAnalyzer({ events, keyRoot, blues, style, bpm, choruses = 
   const total = events.reduce((a, e) => a + e.beats, 0);
   useEffect(() => () => { player.current?.stop(); listener.current?.stop(); }, []);
   const stop = () => {
-    player.current?.stop(); listener.current?.stop();
+    const pl = player.current;
+    player.current = null;
+    pl?.stop(); listener.current?.stop();
     const spb = 60 / bpm;
     const ns = seg.current.notes.filter((n) => t0.current !== null && n.t >= t0.current - 200).map((n) => ({ midi: n.midi, beat: (n.t - (t0.current ?? 0)) / 1000 / spb }));
     const st = analyzeImprov(ns, events, keyRoot, blues);
@@ -57,7 +59,8 @@ export function ImprovAnalyzer({ events, keyRoot, blues, style, bpm, choruses = 
       await l.start((r, t) => seg.current.push(r ? freqToMidi(r.freq) : null, t));
     } catch (e) { setErr(micErrorText(e)); return; }
     const p = new BackingPlayer({
-      style, bpm, countIn: true, metronome: false, mute: { piano: false, bass: false, drums: false },
+      style, bpm, countIn: true, metronome: false,
+      onStop: () => { if (player.current) stop(); },
       onBeat: (b, c) => {
         setBeat(b + (c > 1 ? (c - 1) * total : 0));
         if (b === 0 && t0.current === null) t0.current = performance.now();

@@ -5,20 +5,21 @@ import { Chord, chordNotes, voicing } from '../theory/chords';
 import { ChordEvent } from '../theory/progressions';
 import { IV, midi, pc, transposeNote } from '../theory/notes';
 import { rng } from './rng';
-import { DrumHit, Tone, Voice, click, ensureAudio, swingBeat, swingRatio, triggerDrum, triggerNotes } from './engine';
+import { DrumHit, Tone, Voice, click, endActivity, ensureAudio, getMix, registerActivity, swingBeat, swingRatio, triggerDrum, triggerNotes } from './engine';
 
-export type BackingStyle = 'swing' | 'blues' | 'ballad' | 'bossa';
-export type CompInstrument = 'piano' | 'rhodes' | 'guitar';
+export type BackingStyle = 'swing' | 'blues' | 'ballad' | 'bossa' | 'funk';
+export type CompInstrument = 'piano' | 'rhodes';
 export const STYLE_LABEL: Record<BackingStyle, string> = {
   swing: 'Swing (walking)',
   blues: 'Blues shuffle',
   ballad: 'Balada (escobillas)',
   bossa: 'Bossa nova',
+  funk: 'Funk / soul jazz (corcheas rectas)',
 };
-export const COMP_LABEL: Record<CompInstrument, string> = { piano: 'Piano', rhodes: 'Rhodes', guitar: 'Guitarra' };
+export const COMP_LABEL: Record<CompInstrument, string> = { piano: 'Piano de cola', rhodes: 'Rhodes' };
 
 export interface BackingNote {
-  part: 'comp' | 'bass' | 'drum' | 'melody';
+  part: 'comp' | 'gtr' | 'bass' | 'drum' | 'melody'; // comp = teclado (piano/Rhodes), gtr = guitarra
   beat: number; // tiempo dentro del chorus (sin swing aplicado)
   dur: number;
   midis: number[];
@@ -114,7 +115,11 @@ function guitarShell(c: Chord): number[] {
 
 const SWING_COMP = [[0, 1.5], [1.5, 3], [0, 2.5], [1, 2.5], [0.5, 2], [-0.5, 1.5]];
 
-export function generateBacking(evts: ChordEvent[], style: BackingStyle, comp: CompInstrument = 'piano', seed = 11): BackingNote[] {
+/**
+ * Genera un chorus de acompañamiento. Siempre incluye teclado (`comp`) y guitarra (`gtr`) por separado,
+ * para que el mezclador global pueda hacer sonar uno, otro o ambos sin regenerar.
+ */
+export function generateBacking(evts: ChordEvent[], style: BackingStyle, seed = 11): BackingNote[] {
   const r = rng(seed);
   const out: BackingNote[] = [];
   const total = evts.reduce((s, e) => s + e.beats, 0);
@@ -125,29 +130,49 @@ export function generateBacking(evts: ChordEvent[], style: BackingStyle, comp: C
     const root = nearestInRange(pc(e.chord.root), 38);
     const fifth = nearestInRange(fifthPc(e.chord), root + 7);
     const third = nearestInRange(thirdPc(e.chord), root + 4);
-    const v = comp === 'guitar' ? guitarShell(e.chord) : voices[i];
-    const nextV = comp === 'guitar' ? guitarShell(evts[(i + 1) % evts.length].chord) : voices[(i + 1) % evts.length];
-    const pushComp = (p: number, dur: number, vel: number, notes = v) => out.push({ part: 'comp', beat: ((beat + p) % total + total) % total, dur, midis: notes, vel });
+    const v = voices[i];
+    const nextV = voices[(i + 1) % evts.length];
+    const g = guitarShell(e.chord);
+    const at = (p: number) => ((beat + p) % total + total) % total;
+    const pushComp = (p: number, dur: number, vel: number, notes = v) => out.push({ part: 'comp', beat: at(p), dur, midis: notes, vel });
+    const pushGtr = (p: number, dur: number, vel: number, notes = g) => out.push({ part: 'gtr', beat: at(p), dur, midis: notes, vel });
     if (style === 'blues') {
       const six = nearestInRange(chordTonePc(e.chord, '6'), root + 9);
       const b7 = nearestInRange(chordTonePc(e.chord, 'b7'), root + 10);
       const pattern = e.bar % 2 === 0 ? [root, third, fifth, six] : [b7, six, fifth, third];
       for (let b = 0; b < e.beats; b++) out.push({ part: 'bass', beat: beat + b, dur: 0.85, midis: [pattern[b % 4]], vel: 0.85 });
       for (let b = 0; b < e.beats; b++) if (b % 2 === 1) pushComp(b, 0.35, 0.55 + r() * 0.1);
+      // guitarra: shells cortos en los cuatro tiempos, acento en 2 y 4
+      for (let b = 0; b < e.beats; b++) pushGtr(b, 0.3, b % 2 ? 0.6 : 0.42);
     } else if (style === 'ballad') {
       for (let b = 0; b < e.beats; b += 2) out.push({ part: 'bass', beat: beat + b, dur: 1.9, midis: [b === 0 ? root : fifth], vel: 0.8 });
       pushComp(0, e.beats * 0.95, 0.45);
       if (e.beats >= 4) pushComp(2.5, 1.4, 0.3, [v[v.length - 1] + 12 <= 84 ? v[v.length - 1] + 12 : v[v.length - 1]]);
+      // guitarra: acorde arpegiado suave al inicio de cada acorde (y a mitad si dura 4)
+      pushGtr(0, Math.min(e.beats, 2) * 0.95, 0.4);
+      if (e.beats >= 4) pushGtr(2, 1.9, 0.32);
     } else if (style === 'bossa') {
       for (let b = 0; b < e.beats; b += 2) {
         out.push({ part: 'bass', beat: beat + b, dur: 1.4, midis: [root], vel: 0.85 });
         out.push({ part: 'bass', beat: beat + b + 1.5, dur: 0.45, midis: [fifth - 12 >= BASS_LO ? fifth - 12 : fifth], vel: 0.7 });
       }
+      // guitarra: el patrón sincopado de la bossa; teclado: colchón sostenido más discreto
       const pat = e.bar % 2 === 0 ? [0, 1.5, 3] : [0.5, 2];
-      pat.filter((p) => p < e.beats).forEach((p) => pushComp(p, 0.9, 0.5));
-    } else if (comp === 'guitar') {
-      for (let b = 0; b < e.beats; b++) pushComp(b, 0.45, b % 2 ? 0.55 : 0.65);
+      pat.filter((p) => p < e.beats).forEach((p) => pushGtr(p, 0.9, 0.5));
+      pushComp(0, e.beats * 0.9, 0.32);
+    } else if (style === 'funk') {
+      // bajo sincopado (fundamental, octava, 5ª y aproximación), teclado y guitarra en golpes cortos
+      const oct = root + 12 <= BASS_HI ? root + 12 : root;
+      const b7 = nearestInRange(chordTonePc(e.chord, 'b7'), root + 10);
+      const bassPat: [number, number, number][] = e.beats >= 4
+        ? [[0, root, 0.9], [1.5, root, 0.4], [2, oct, 0.4], [2.75, fifth, 0.25], [3.5, e.chord.quality.id === 'maj7' ? fifth : b7, 0.4]]
+        : [[0, root, 0.9], [1.5, oct, 0.4]];
+      bassPat.forEach(([p, m, d]) => out.push({ part: 'bass', beat: beat + p, dur: d, midis: [m], vel: p === 0 ? 0.9 : 0.72 }));
+      [1.5, 3].filter((p) => p < e.beats).forEach((p) => pushComp(p, 0.3, 0.5 + r() * 0.1));
+      [0.5, 1.75, 2.5, 3.5].filter((p) => p < e.beats).forEach((p) => pushGtr(p, 0.18, 0.45));
     } else {
+      // swing: guitarra a cuatro (estilo Freddie Green) + piano con comping rítmico y anticipaciones
+      for (let b = 0; b < e.beats; b++) pushGtr(b, 0.45, b % 2 ? 0.55 : 0.65);
       const pat = e.beats >= 4 ? SWING_COMP[Math.floor(r() * SWING_COMP.length)] : [r() < 0.3 ? -0.5 : 0];
       // -0.5 = anticipación: el acorde llega medio tiempo antes (se toca el voicing del acorde siguiente)
       pat.forEach((p) => (p < 0 ? pushComp(p, 0.9, 0.55, v) : pushComp(p, p % 1 ? 0.4 : 0.8, 0.45 + r() * 0.15)));
@@ -178,6 +203,15 @@ export function generateBacking(evts: ChordEvent[], style: BackingStyle, comp: C
       else D(b, 'brush_tap', 0.55);
       if (inBar % 2 === 1) D(b, 'hh_pedal', 0.5);
       if (inBar === 0) D(b, 'kick_soft', 0.3);
+    } else if (style === 'funk') {
+      D(b, 'hh_closed', 0.6);
+      D(b + 0.5, 'hh_closed', 0.4);
+      if (inBar === 0) D(b, 'kick', 0.85);
+      if (inBar === 1) D(b + 0.5, 'kick', 0.6);
+      if (inBar === 2 && r() < 0.6) D(b + 0.5, 'kick', 0.55);
+      if (inBar % 2 === 1) D(b, 'snare', 0.85);
+      if (r() < 0.2) D(b + 0.75, 'snare_ghost', 0.3);
+      if (lastBar && inBar === 3) D(b + 0.5, 'hh_open', 0.5);
     } else {
       D(b, 'hh_closed', 0.45);
       D(b + 0.5, 'hh_closed', 0.3);
@@ -202,8 +236,10 @@ export interface BackingOptions {
   bpm: number;
   countIn: boolean;
   metronome: boolean;
-  mute: { piano: boolean; bass: boolean; drums: boolean };
-  comp?: CompInstrument;
+  /** silencios locales (además del mezclador global), p.ej. sin piano cuando el alumno toca el piano */
+  mute?: { piano?: boolean; guitar?: boolean; bass?: boolean; drums?: boolean };
+  /** se llama siempre que el acompañamiento se detiene, también desde el botón global «Detener» */
+  onStop?: () => void;
   onChord?: (index: number) => void;
   onBeat?: (beatInChorus: number, chorus: number) => void;
   onMelodyNote?: (index: number) => void;
@@ -229,14 +265,16 @@ export class BackingPlayer {
 
   async start(evts: ChordEvent[], melody: { beat: number; dur: number; midi: number }[] = []) {
     await ensureAudio();
-    this.stop();
+    this.stop(true);
+    registerActivity('transport', this.stopper);
+    own('transport', this.stopper);
     const tr = Tone.getTransport();
     tr.cancel();
     tr.bpm.value = this.opts.bpm;
     tr.position = 0;
     const PPQ = tr.PPQ;
     const total = evts.reduce((s, e) => s + e.beats, 0);
-    const notes = generateBacking(evts, this.opts.style, this.opts.comp ?? 'piano', Math.floor(Math.random() * 1e6));
+    const notes = generateBacking(evts, this.opts.style, Math.floor(Math.random() * 1e6));
     melody.forEach((m, i) => notes.push({ part: 'melody', beat: m.beat, dur: m.dur, midis: [m.midi], vel: 0.85, idx: i }));
     const swung = isSwung(this.opts.style);
     const ratio = swingRatio(this.opts.bpm);
@@ -249,7 +287,6 @@ export class BackingPlayer {
     for (let b = 0; b < total; b++) events.push({ time: tick(b), beat: b, jitter: 0 });
     let chorus = 0;
     const offset = this.opts.countIn ? 4 * PPQ : 0;
-    const comp = this.opts.comp ?? 'piano';
     const kit = this.opts.style === 'ballad' ? 'brush' : 'jazz';
     this.part = new Tone.Part((time, ev: Ev) => {
       const spb = 60 / tr.bpm.value;
@@ -257,15 +294,17 @@ export class BackingPlayer {
       if (ev.n) {
         const n = ev.n;
         const d = n.dur * spb;
-        const m = this.opts.mute;
+        const m = this.opts.mute ?? {};
+        const { layers: L, keys } = getMix();
         const v = human ? Math.min(1, n.vel * (0.9 + Math.random() * 0.2)) : n.vel;
         if (n.part === 'melody') {
-          if (this.opts.melodyOn !== false) triggerNotes(this.opts.melodyVoice ?? 'sax', n.midis, d * 0.95, t, n.vel, 'melody');
+          if (this.opts.melodyOn !== false && L.melody) triggerNotes(this.opts.melodyVoice ?? 'sax', n.midis, d * 0.95, t, n.vel, 'melody');
           const idx = n.idx!;
           Tone.getDraw().schedule(() => this.opts.onMelodyNote?.(idx), time);
-        } else if (n.part === 'comp' && !m.piano) triggerNotes(comp, n.midis, d, t, v, 'comp');
-        else if (n.part === 'bass' && !m.bass) triggerNotes('bass', n.midis, d, t, v, 'comp');
-        else if (n.part === 'drum' && !m.drums && n.hit) triggerDrum(n.hit, t, v, kit);
+        } else if (n.part === 'comp') { if (L.piano && !m.piano) triggerNotes(keys, n.midis, d, t, L.guitar ? v * 0.85 : v, 'comp'); }
+        else if (n.part === 'gtr') { if (L.guitar && !m.guitar) triggerNotes('guitar', n.midis, d, t, L.piano ? v * 0.8 : v, 'comp'); }
+        else if (n.part === 'bass') { if (L.bass && !m.bass) triggerNotes('bass', n.midis, d, t, v, 'comp'); }
+        else if (n.part === 'drum' && L.drums && !m.drums && n.hit) triggerDrum(n.hit, t, v, kit);
       }
       if (ev.chordIdx !== undefined) {
         const idx = ev.chordIdx;
@@ -274,7 +313,7 @@ export class BackingPlayer {
       }
       if (ev.beat !== undefined) {
         const b = ev.beat;
-        if (this.opts.metronome) click(time, b % 4 === 0);
+        if (this.opts.metronome || getMix().layers.click) click(time, b % 4 === 0);
         const c = chorus;
         Tone.getDraw().schedule(() => this.opts.onBeat?.(b, c), time);
       }
@@ -296,7 +335,11 @@ export class BackingPlayer {
     tr.start('+0.1');
   }
 
-  stop() {
+  private stopper = () => this.stop();
+
+  /** `restarting`: se va a volver a arrancar enseguida, así que no avisa a la interfaz. */
+  stop(restarting = false) {
+    const was = this.playing;
     const tr = Tone.getTransport();
     tr.stop();
     this.countIds.forEach((id) => tr.clear(id));
@@ -304,14 +347,21 @@ export class BackingPlayer {
     this.part?.dispose();
     this.part = null;
     this.playing = false;
+    endActivityIf('transport', this.stopper);
+    if (was && !restarting) this.opts.onStop?.();
   }
 }
 
 // ---------------- Metrónomo independiente ----------------
 let metroLoop: Tone.Loop | null = null;
-export async function startMetronome(bpm: number, beatsPerBar = 4, onBeat?: (b: number) => void) {
+let metroOnStop: (() => void) | undefined;
+const metroStopper = () => stopMetronome();
+export async function startMetronome(bpm: number, beatsPerBar = 4, onBeat?: (b: number) => void, onStop?: () => void) {
   await ensureAudio();
-  stopMetronome();
+  if (metroLoop) { metroLoop.dispose(); metroLoop = null; }
+  registerActivity('transport', metroStopper);
+  own('transport', metroStopper);
+  metroOnStop = onStop;
   const tr = Tone.getTransport();
   tr.cancel();
   tr.bpm.value = bpm;
@@ -325,10 +375,23 @@ export async function startMetronome(bpm: number, beatsPerBar = 4, onBeat?: (b: 
   tr.start('+0.05');
 }
 export function stopMetronome() {
+  const was = !!metroLoop;
   metroLoop?.dispose();
   metroLoop = null;
+  if (!was) return;
   Tone.getTransport().stop();
+  endActivityIf('transport', metroStopper);
+  const cb = metroOnStop;
+  metroOnStop = undefined;
+  cb?.();
 }
+
+// el transporte es compartido: solo se borra el registro si sigue siendo nuestro
+const owners = new Map<string, () => void>();
+function endActivityIf(id: string, fn: () => void) {
+  if (owners.get(id) === fn) { owners.delete(id); endActivity(id); }
+}
+function own(id: string, fn: () => void) { owners.set(id, fn); }
 export function setTransportBpm(bpm: number) {
   Tone.getTransport().bpm.value = bpm;
 }

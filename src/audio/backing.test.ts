@@ -38,7 +38,7 @@ describe('acompañamientos', () => {
     }
   });
   it('los eventos del piano y bajo caen dentro del acorde que corresponde', () => {
-    for (const style of ['swing', 'blues', 'ballad', 'bossa'] as const) {
+    for (const style of ['swing', 'blues', 'ballad', 'bossa', 'funk'] as const) {
       const ev = realize(progressionById('iiVI'), parseNote('C'));
       const notes = generateBacking(ev, style);
       const total = ev.reduce((s, e) => s + e.beats, 0);
@@ -46,7 +46,7 @@ describe('acompañamientos', () => {
         if (n.part === 'comp' && n.beat >= total - 0.5) continue; // anticipación del siguiente chorus
         expect(n.beat).toBeGreaterThanOrEqual(0);
         expect(n.beat).toBeLessThan(total);
-        if (n.part === 'comp') {
+        if (n.part === 'comp' || n.part === 'gtr') {
           // vale el acorde que suena o, si es una anticipación (contratiempo), el siguiente
           const fits = (c: (typeof ev)[number]['chord']) => {
             const r = chordPcs(c)[0];
@@ -56,6 +56,15 @@ describe('acompañamientos', () => {
           expect(fits(chordAt(ev, n.beat).chord) || (n.beat % 1 !== 0 && fits(chordAt(ev, n.beat + 0.5).chord))).toBe(true);
         }
       }
+    }
+  });
+  it('el acompañamiento trae teclado y guitarra por separado para el mezclador', () => {
+    for (const style of ['swing', 'blues', 'ballad', 'bossa', 'funk'] as const) {
+      const notes = generateBacking(realize(progressionById('iiVI'), parseNote('F')), style);
+      expect(notes.some((n) => n.part === 'comp'), style).toBe(true);
+      expect(notes.some((n) => n.part === 'gtr'), style).toBe(true);
+      expect(notes.some((n) => n.part === 'bass'), style).toBe(true);
+      expect(notes.some((n) => n.part === 'drum'), style).toBe(true);
     }
   });
   it('swing ternario', () => {

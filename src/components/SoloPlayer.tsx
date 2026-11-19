@@ -1,14 +1,15 @@
 // Reproductor de líneas explicadas: partitura con cifrado y colores por función, acompañamiento,
 // explicación por frase, "repite después de mí" y guardado en el vocabulario.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BackingPlayer, BackingStyle, COMP_LABEL, CompInstrument, STYLE_LABEL } from '../audio/backing';
+import { BackingPlayer, BackingStyle, STYLE_LABEL } from '../audio/backing';
 import { playSequence, stopSequence, triggerNotes, ensureAudio } from '../audio/engine';
 import { TimeStaff, ROLE_COLOR } from '../instruments/TimeStaff';
 import { ChordEvent } from '../theory/progressions';
 import { Note, noteName } from '../theory/notes';
 import { AnnotatedNote, LineNote, ROLE_LABEL, analyzeLine, chordStarts, NoteRole } from '../theory/line';
 import { eventsToChart, repeatEvents, sliceEvents, sliceLine } from '../theory/section';
-import { addVocab, update, useAppState } from '../progress/store';
+import { addVocab } from '../progress/store';
+import { LayerToggles, useOnStopAll } from './Mixer';
 import { useNames, useTransposer, voiceFor } from './common';
 
 export interface PlayerPhrase { start: number; end: number; title: string; text: string }
@@ -31,7 +32,6 @@ interface Props {
 export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: bpm0, phrases = [], title, summary, source, guidedRepeat, hideSave }: Props) {
   const t = useTransposer();
   const names = useNames();
-  const app = useAppState();
   const sorted = useMemo(() => [...notes].sort((a, b) => a.start - b.start), [notes]);
   const an = useMemo(() => analyzeLine(sorted, events, { keyRoot, blues, names: { note: t.noteName, chord: t.chordName } }), [sorted, events, keyRoot, blues, t.instrument, t.sax]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = events.reduce((s, e) => s + e.beats, 0);
@@ -46,19 +46,19 @@ export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: 
   const [guided, setGuided] = useState(0);
   const [saved, setSaved] = useState<Record<number, boolean>>({});
   const player = useRef<BackingPlayer | null>(null);
-  const comp = app.sound.comp;
   useEffect(() => { setBpm(bpm0); setStyle(style0); }, [bpm0, style0]);
   useEffect(() => () => { player.current?.stop(); stopSequence(); }, []);
   useEffect(() => { stopAll(); /* nueva línea */ }, [notes, events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const melodyVoice = voiceFor(t.instrument);
   const stopAll = () => { player.current?.stop(); stopSequence(); setMode('stop'); setActive(null); setCallInfo(null); };
+  useOnStopAll(() => { setMode('stop'); setActive(null); setCallInfo(null); });
 
   const startBacking = async (evs: ChordEvent[], melody: LineNote[], indexMap: number[], m: typeof mode, onBeat?: (b: number) => void, melodyOn = true) => {
     stopAll();
     const p = new BackingPlayer({
-      style, bpm, countIn: true, metronome: false, mute: { piano: t.instrument === 'piano' && m === 'you', bass: false, drums: false },
-      comp, melodyVoice, melodyOn, onMelodyNote: (i) => setActive(indexMap[i] ?? null), onBeat: (b) => onBeat?.(b),
+      style, bpm, countIn: true, metronome: false, mute: { piano: t.instrument === 'piano' && m === 'you', guitar: t.instrument === 'guitar' && m === 'you' },
+      melodyVoice, melodyOn, onStop: () => { setMode('stop'); setActive(null); setCallInfo(null); }, onMelodyNote: (i) => setActive(indexMap[i] ?? null), onBeat: (b) => onBeat?.(b),
     });
     player.current = p;
     await p.start(evs, melody.map((n) => ({ beat: n.start, dur: n.dur, midi: n.midi })));
@@ -129,8 +129,8 @@ export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: 
         )}
         <label className="tempo">♩= {bpm}<input type="range" min={40} max={240} value={bpm} onChange={(e) => { setBpm(+e.target.value); player.current?.setTempo(+e.target.value); }} /></label>
         <select value={style} onChange={(e) => setStyle(e.target.value as BackingStyle)} aria-label="Estilo">{Object.entries(STYLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-        <select value={comp} onChange={(e) => update((s) => { s.sound.comp = e.target.value as CompInstrument; })} aria-label="Acompañante">{Object.entries(COMP_LABEL).map(([k, v]) => <option key={k} value={k}>Acomp.: {v}</option>)}</select>
       </div>
+      <LayerToggles hide={['melody']} />
       {callInfo && (
         <div className={`turn ${callInfo.turn}`}>{callInfo.turn === 'escucha' ? `🎧 Escucha la frase ${callInfo.phrase + 1}…` : '🎷 ¡Tu turno! Repítela sobre los mismos acordes'}</div>
       )}

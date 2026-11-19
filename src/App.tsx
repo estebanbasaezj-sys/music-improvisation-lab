@@ -25,7 +25,7 @@ const NAV: { path: string; label: string; icon: IconName }[] = [
   { path: 'camino', label: 'Camino', icon: 'route' },
   { path: 'repertorio', label: 'Repertorio', icon: 'books' },
   { path: 'lab', label: 'Laboratorio', icon: 'sliders' },
-  { path: 'estudio', label: 'Estudio', icon: 'headphones' },
+  { path: 'estudio', label: 'Sacar solos', icon: 'headphones' },
   { path: 'canciones', label: 'Canciones', icon: 'note' },
   { path: 'vocabulario', label: 'Vocabulario', icon: 'cards' },
   { path: 'teoria', label: 'Teoría', icon: 'theory' },

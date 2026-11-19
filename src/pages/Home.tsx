@@ -74,7 +74,7 @@ export function Home() {
         <a className="pcard" href="#/repaso"><span>🔁</span><b>Repasar errores</b><small>{mistakes ? `${mistakes} ejercicio(s) que fallaste` : 'Sin errores pendientes'}</small></a>
         <a className="pcard feature" href="#/repertorio"><span>📚</span><b>Repertorio</b><small>Temas clásicos para tocar y solear encima</small></a>
         <a className="pcard" href="#/lab"><span>✨</span><b>Taller de improvisación</b><small>Solos explicados, repite y crea</small></a>
-        <a className="pcard" href="#/estudio"><span>🎧</span><b>Estudio: transcribir audio</b><small>Partitura y acordes de lo que suena</small></a>
+        <a className="pcard feature" href="#/estudio"><span>🎧</span><b>Sacar solos</b><small>Separa el instrumento con IA, loop, partitura y explicación</small></a>
         <a className="pcard" href="#/vocabulario"><span>🗂</span><b>Mi vocabulario</b><small>{reviews ? `${reviews} repaso(s) para hoy` : 'Frases en 12 tonalidades'}</small></a>
         <a className="pcard" href="#/sesion"><span>⏱</span><b>Sesión guiada</b><small>10–45 min por bloques</small></a>
         <a className="pcard" href="#/nivel"><span>🧭</span><b>Prueba de nivel</b><small>{ps.level !== null ? `Tu nivel: ${ps.level}` : 'Descubre tu nivel'}</small></a>

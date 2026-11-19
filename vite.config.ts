@@ -22,5 +22,8 @@ function appManifest(): Plugin {
 export default defineConfig({
   base: './',
   plugins: [react(), appManifest()],
+  worker: { format: 'es' },
+  // ONNX Runtime Web (separación con IA) localiza sus .wasm junto a su módulo: sin pre-empaquetarlo en desarrollo
+  optimizeDeps: { exclude: ['onnxruntime-web', '@audio/neural-runtime', '@audio/neural-separate'] },
   test: { globals: true, environment: 'node' },
 });

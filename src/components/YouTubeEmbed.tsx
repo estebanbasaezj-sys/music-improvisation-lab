@@ -81,7 +81,7 @@ export function YouTubeEmbed({ videos, query, checked }: { videos: VideoRef[]; q
           onStateChange: (e: { data: number }) => {
             const PS = window.YT?.PlayerState;
             if (!PS) return;
-            if (e.data === PS.PLAYING) registerActivity(actId.current, () => player.current?.pauseVideo());
+            if (e.data === PS.PLAYING) registerActivity(actId.current, () => player.current?.pauseVideo(), `Video de YouTube: «${v.title}»`);
             else if (e.data === PS.PAUSED || e.data === PS.ENDED) endActivity(actId.current);
           },
         },

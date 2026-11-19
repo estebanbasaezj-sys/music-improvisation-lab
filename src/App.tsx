@@ -100,9 +100,9 @@ export function App() {
           <a key={n.path} href={`#/${n.path}`} className={navSeg === n.path ? 'on' : ''}><span className="ico"><Icon name={n.icon} size={22} /></span><span>{n.label}</span></a>
         ))}
       </nav>
-      <StopAllButton />
       <StreakOverlay />
       <main key={s.instrument + route} className={['nodo', 'saltar', 'repaso'].includes(seg) || (seg === 'nivel') ? 'focus' : ''}>{page}</main>
+      <StopAllButton />
     </div>
   );
 }

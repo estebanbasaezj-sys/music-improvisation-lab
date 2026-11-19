@@ -51,7 +51,7 @@ export function BackingPanel({ events, style: style0, bpm: bpm0, display: displa
   const start = async () => {
     player.current?.stop();
     const p = new BackingPlayer({
-      style, bpm, countIn, metronome: false,
+      style, bpm, countIn, metronome: false, label: `Base para improvisar · ${STYLE_LABEL[style]}`,
       melodyVoice: t.instrument === 'guitar' ? 'guitar' : t.instrument === 'piano' ? 'piano' : 'sax',
       onChord: (i) => setCur(i),
       onStop: () => { setPlaying(false); setBeat(null); onPlayingChange?.(false); },

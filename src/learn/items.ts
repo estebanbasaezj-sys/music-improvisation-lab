@@ -255,7 +255,7 @@ export function generateItem(spec: ItemSpec, ctx: GenCtx): Item {
     case 'tap-rhythm': {
       const pat = parsePattern(pick(r, spec.patterns));
       const { onsets, beats } = rhythmOnsets(pat);
-      return { ...base, prompt: 'Toca este ritmo', sub: `Escucha 4 clics de cuenta y pulsa el botón grande (o la barra espaciadora) en cada nota. ${rhythmLabel(pat)}.`, rhythm: pat,
+      return { ...base, prompt: 'Toca este ritmo', sub: `Escucha 4 clics de cuenta y marca cada nota con el botón grande, la barra espaciadora o con palmas (micrófono). ${rhythmLabel(pat)}.`, rhythm: pat,
         audio: { seq: onsets.map((o, i) => ({ midi: 72, start: o, dur: Math.min(0.9, rhythmOnsets(pat).durs[i]) })), bpm: spec.bpm, voice: 'click', swing: spec.swing, countIn: 4, beats },
         answer: { type: 'rhythm', onsets: spec.swing ? onsets.map((o) => (Math.abs((o % 1) - 0.5) < 1e-6 ? Math.floor(o) + 2 / 3 : o)) : onsets, bpm: spec.bpm, beats }, explain: 'La precisión rítmica se mide con el reloj de audio: cada pulsación debe caer cerca de su nota.', skills: ['ritmo'] };
     }

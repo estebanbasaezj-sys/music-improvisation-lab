@@ -5,7 +5,7 @@ import { Chord, chordNotes, voicing } from '../theory/chords';
 import { ChordEvent } from '../theory/progressions';
 import { IV, midi, pc, transposeNote } from '../theory/notes';
 import { rng } from './rng';
-import { DrumHit, Tone, Voice, click, endActivity, ensureAudio, getMix, registerActivity, swingBeat, swingRatio, triggerDrum, triggerNotes } from './engine';
+import { DrumHit, Tone, Voice, click, endActivity, ensureAudio, getMix, registerActivity, setActivityLabel, swingBeat, swingRatio, triggerDrum, triggerNotes } from './engine';
 
 export type BackingStyle = 'swing' | 'blues' | 'ballad' | 'bossa' | 'funk';
 export type CompInstrument = 'piano' | 'rhodes';
@@ -240,6 +240,8 @@ export interface BackingOptions {
   mute?: { piano?: boolean; guitar?: boolean; bass?: boolean; drums?: boolean };
   /** se llama siempre que el acompañamiento se detiene, también desde el botón global «Detener» */
   onStop?: () => void;
+  /** qué es lo que suena, para la barra «Sonando ahora» */
+  label?: string;
   onChord?: (index: number) => void;
   onBeat?: (beatInChorus: number, chorus: number) => void;
   onMelodyNote?: (index: number) => void;
@@ -261,12 +263,17 @@ export class BackingPlayer {
   setTempo(bpm: number) {
     this.opts.bpm = bpm;
     Tone.getTransport().bpm.rampTo(bpm, 0.05);
+    if (this.playing) setActivityLabel('transport', this.label());
+  }
+
+  private label() {
+    return `${this.opts.label ?? `Acompañamiento · ${STYLE_LABEL[this.opts.style]}`} · ♩ = ${Math.round(this.opts.bpm)}`;
   }
 
   async start(evts: ChordEvent[], melody: { beat: number; dur: number; midi: number }[] = []) {
     await ensureAudio();
     this.stop(true);
-    registerActivity('transport', this.stopper);
+    registerActivity('transport', this.stopper, this.label());
     own('transport', this.stopper);
     const tr = Tone.getTransport();
     tr.cancel();
@@ -359,7 +366,7 @@ const metroStopper = () => stopMetronome();
 export async function startMetronome(bpm: number, beatsPerBar = 4, onBeat?: (b: number) => void, onStop?: () => void) {
   await ensureAudio();
   if (metroLoop) { metroLoop.dispose(); metroLoop = null; }
-  registerActivity('transport', metroStopper);
+  registerActivity('transport', metroStopper, `Metrónomo · ♩ = ${bpm}`);
   own('transport', metroStopper);
   metroOnStop = onStop;
   const tr = Tone.getTransport();

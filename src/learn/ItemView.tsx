@@ -31,7 +31,7 @@ export async function playItemAudio(item: Item, ctx: GenCtx): Promise<RhythmTime
     a.seq.forEach((n) => triggerDrum('stick', t0 + (ci + (a.swing ? swingBeat(n.start) : n.start)) * spb, 0.95));
     return ci ? { t0, spb, countIn: ci, beats } : null;
   }
-  playSequence(a.voice === 'inst' ? voiceFor(ctx.instrument) : 'piano', a.seq, a.bpm, { swing: a.swing });
+  playSequence(a.voice === 'inst' ? voiceFor(ctx.instrument) : 'piano', a.seq, a.bpm, { swing: a.swing, label: 'Audio del ejercicio' });
   return null;
 }
 
@@ -67,9 +67,10 @@ export function ItemView({ item, ctx, onVerdict, locked }: { item: Item; ctx: Ge
   const [picked, setPicked] = useState<number | null>(null);
   const [timeline, setTimeline] = useState<RhythmTimeline | null>(null);
   const [clapRes, setClapRes] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [clapOpen, setClapOpen] = useState(false);
   const play = async () => setTimeline(await playItemAudio(item, ctx));
   useEffect(() => {
-    setTapped([]); setPicked(null); setTimeline(null); setClapRes(null);
+    setTapped([]); setPicked(null); setTimeline(null); setClapRes(null); setClapOpen(false);
     if (item.autoplay) { const id = setTimeout(play, 250); return () => { clearTimeout(id); stopSequence(); }; }
     return () => stopSequence();
   }, [item]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -117,9 +118,9 @@ export function ItemView({ item, ctx, onVerdict, locked }: { item: Item; ctx: Ge
         </div>
       )}
       {a.type === 'choice' && a.optionKind === 'rhythm' && locked && (
-        <details className="clap-practice">
+        <details className="clap-practice" onToggle={(e) => setClapOpen((e.target as HTMLDetailsElement).open)}>
           <summary>👏 Extra: aplaude este ritmo y la app evalúa tus palmas (micrófono)</summary>
-          <RhythmTap pattern={parsePattern(a.options[a.correct])} bpm={item.audio?.bpm ?? 80} initialMode="mic" hideStaff onResult={(ok, detail) => setClapRes({ ok, detail })} />
+          {clapOpen && <RhythmTap pattern={parsePattern(a.options[a.correct])} bpm={item.audio?.bpm ?? 80} initialMode="mic" hideStaff onResult={(ok, detail) => setClapRes({ ok, detail })} />}
           {clapRes && <p className={clapRes.ok ? 'ok' : 'warn'}>{clapRes.ok ? '¡Bien! ' : 'Casi: '}{clapRes.detail}</p>}
         </details>
       )}

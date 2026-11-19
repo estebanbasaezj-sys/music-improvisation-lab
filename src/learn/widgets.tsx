@@ -51,8 +51,11 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
   const [taps, setTaps] = useState<number[]>([]);
   const [beatNow, setBeatNow] = useState(-1);
   const [mode, setMode] = useState<'pad' | 'mic'>(initialMode);
+  const [mic, setMic] = useState<'off' | 'starting' | 'ready'>('off');
   const [micErr, setMicErr] = useState('');
   const [level, setLevel] = useState(0);
+  const [heard, setHeard] = useState(0);
+  const [pulse, setPulse] = useState(true);
   const t0 = useRef(0);
   const tapsRef = useRef<number[]>([]);
   const timer = useRef<number[]>([]);
@@ -62,20 +65,43 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
   const { onsets, beats } = rhythmOnsets(pattern);
   const exp = swing ? onsets.map((o) => (Math.abs((o % 1) - 0.5) < 1e-6 ? Math.floor(o) + 2 / 3 : o)) : onsets;
   const spb = 60 / bpm;
-  const stopMic = () => { clap.current?.stop(); clap.current = null; setLevel(0); };
-  useEffect(() => () => { timer.current.forEach(clearTimeout); stopMic(); }, []);
   const outLat = () => {
     const ctx = Tone.getContext().rawContext as AudioContext;
     return (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
   };
   /** registra un golpe en el instante `t` (reloj del AudioContext, sin la anticipación de Tone) */
   const register = (t: number) => {
-    if (phaseRef.current !== 'tap' && phaseRef.current !== 'count') return;
+    if (phaseRef.current !== 'tap' && phaseRef.current !== 'count') return false;
     const beat = (t - outLat() - t0.current) / spb;
-    if (beat < -0.6 || beat > beats + 0.6) return;
+    if (beat < -0.6 || beat > beats + 0.6) return false;
     tapsRef.current.push(beat);
     setTaps([...tapsRef.current]);
+    return true;
   };
+  // El micrófono se activa al elegir «Palmas», no al empezar: así el permiso del navegador y el cambio de
+  // configuración de audio (p. ej. auriculares Bluetooth) no se comen la cuenta de entrada.
+  useEffect(() => {
+    if (mode !== 'mic') { clap.current?.stop(); clap.current = null; setMic('off'); setLevel(0); return; }
+    let alive = true;
+    setMicErr(''); setMic('starting');
+    (async () => {
+      try {
+        await ensureAudio();
+        const cl = new ClapListener();
+        await cl.start((e) => { if (!register(e.time) && phaseRef.current !== 'count') setHeard((h) => h + 1); }, (r) => setLevel(r));
+        if (!alive) { cl.stop(); return; }
+        clap.current = cl;
+        await new Promise((r) => setTimeout(r, 400)); // dejar que el audio se estabilice
+        if (alive) setMic('ready');
+      } catch (e) {
+        if (!alive) return;
+        setMicErr(micErrorText(e));
+        setMode('pad');
+      }
+    })();
+    return () => { alive = false; clap.current?.stop(); clap.current = null; };
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => timer.current.forEach(clearTimeout), []);
   const listen = async () => {
     await ensureAudio();
     await waitSamples(3000);
@@ -86,29 +112,25 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
   const start = async () => {
     await ensureAudio();
     await waitSamples(3000);
+    const raw = Tone.getContext().rawContext as AudioContext;
+    if (raw.state !== 'running') await raw.resume().catch(() => undefined);
+    if (mode === 'mic' && mic !== 'ready') return;
     timer.current.forEach(clearTimeout);
     timer.current = [];
     tapsRef.current = [];
     setTaps([]);
-    setMicErr('');
-    if (mode === 'mic' && !clap.current) {
-      try {
-        const cl = new ClapListener();
-        await cl.start((e) => register(e.time), (r) => setLevel(r));
-        clap.current = cl;
-      } catch (e) {
-        setMicErr(micErrorText(e));
-        setMode('pad');
-        return;
-      }
-    }
-    const lead = 0.3;
+    cancelScheduled();
+    const lead = 0.35;
     const now = Tone.now() + lead;
-    for (let b = 0; b < 4; b++) click(now + b * spb, b === 0);
-    // con micrófono no suena el pulso durante el ritmo: el micrófono lo confundiría con tus palmas
-    if (mode === 'pad') for (let b = 0; b < Math.ceil(beats); b++) triggerDrum('hh_pedal', now + (4 + b) * spb, 0.5);
+    const countTimes = [0, 1, 2, 3].map((b) => now + b * spb);
+    countTimes.forEach((t, b) => click(t, b === 0));
+    const pulseTimes = pulse ? Array.from({ length: Math.ceil(beats) }, (_, b) => now + (4 + b) * spb) : [];
+    if (mode === 'pad') pulseTimes.forEach((t) => triggerDrum('hh_pedal', t, 0.5));
+    else pulseTimes.forEach((t) => click(t, false));
+    clap.current?.setClicks(countTimes, pulseTimes, outLat());
     t0.current = now + 4 * spb;
     const wait = (now - Tone.immediate()) * 1000;
+    setBeatNow(-5);
     setPhase('count');
     for (let b = 0; b < 4 + Math.ceil(beats); b++) timer.current.push(window.setTimeout(() => setBeatNow(b - 4), wait + b * spb * 1000));
     timer.current.push(window.setTimeout(() => setPhase('tap'), wait + 3.5 * spb * 1000));
@@ -121,7 +143,7 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
   };
   const finish = () => {
     setPhase('done');
-    stopMic();
+    setHeard(0);
     const tol = bpm < 90 ? 0.22 : 0.18;
     const r = scoreRhythm(exp, tapsRef.current, tol);
     const ms = Math.round(r.meanErr * spb * 1000);
@@ -134,6 +156,8 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
     return () => window.removeEventListener('keydown', k);
   });
   const live = phase === 'tap' || phase === 'count';
+  const counting = live && beatNow < 0;
+  const bigCount = beatNow < -4 ? '…' : counting ? String(beatNow + 5) : live ? `${(beatNow % 4) + 1}` : '';
   return (
     <div className="rhythm-tap">
       {!hideStaff && <RhythmStaff pattern={pattern} />}
@@ -143,18 +167,24 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
       </div>
       {micErr && <p className="warn small">{micErr} Puedes seguir con el botón.</p>}
       <div className="row gap wrap center">
-        <button className="btn" onClick={listen}>🔊 Escuchar</button>
-        {phase === 'idle' || phase === 'done' ? <button className="btn primary" onClick={start}>{phase === 'done' ? 'Repetir' : '▶ Empezar (4 clics de cuenta)'}</button> : <span className="count">{beatNow < 0 ? `Cuenta… ${beatNow + 5}` : `Tiempo ${(beatNow % 4) + 1}`}</span>}
+        <button className="btn" onClick={listen} disabled={live}>🔊 Escuchar</button>
+        {!live && <button className="btn primary" onClick={start} disabled={mode === 'mic' && mic !== 'ready'}>{phase === 'done' ? 'Repetir' : '▶ Empezar (4 clics de cuenta)'}</button>}
+        <label className="toggle"><input type="checkbox" checked={pulse} disabled={live} onChange={() => setPulse(!pulse)} />Pulso durante el ritmo</label>
       </div>
       {mode === 'pad' ? (
-        <button className={`tap-pad ${live ? 'live' : ''}`} onPointerDown={tap}>TOCA AQUÍ<small>(o barra espaciadora)</small></button>
+        <button className={`tap-pad ${live ? 'live' : ''}`} onPointerDown={tap}>
+          {live ? <span key={beatNow} className={`tap-count ${counting ? 'count' : ''}`}>{counting ? `Cuenta ${bigCount}` : `Tiempo ${bigCount}`}</span> : 'TOCA AQUÍ'}
+          <small>(o barra espaciadora)</small>
+        </button>
       ) : (
         <div className={`tap-pad mic ${live ? 'live' : ''}`}>
-          👏 {live ? (phase === 'count' ? 'Escucha la cuenta…' : '¡Aplaude el ritmo!') : 'Aplaude el ritmo después de la cuenta'}
-          <small>{live ? 'El micrófono detecta cada palmada' : 'Mejor con auriculares o con el volumen bajo, para que el micrófono no oiga los clics'}</small>
-          {live && <span className="mic-meter"><span style={{ width: `${Math.min(100, level * 400)}%` }} /></span>}
+          {mic === 'starting' && <>🎤 Activando el micrófono…<small>Si el navegador lo pide, acepta el permiso.</small></>}
+          {mic === 'ready' && !live && <>👏 Micrófono listo<small>{heard ? `Te oigo (${heard} palmada${heard > 1 ? 's' : ''} de prueba). ` : 'Aplaude una vez para probar. '}Luego pulsa «Empezar»: suenan 4 clics y aplaudes el ritmo.</small></>}
+          {live && <><span key={beatNow} className={`tap-count ${counting ? 'count' : ''}`}>{counting ? `Cuenta ${bigCount}` : `👏 Tiempo ${bigCount}`}</span><small>{counting ? 'Escucha la cuenta…' : '¡Aplaude el ritmo!'}</small></>}
+          {mic !== 'off' && <span className="mic-meter" title="Nivel del micrófono"><span style={{ width: `${Math.min(100, level * 400)}%` }} /></span>}
         </div>
       )}
+      {mode === 'mic' && <p className="muted small center">Con altavoces funciona: la app mide cómo llega el clic al micrófono durante la cuenta y luego distingue tus palmas (más fuertes). Con auriculares es aún más preciso.</p>}
       <div className="tap-dots">{taps.map((t, i) => <span key={i} style={{ left: `${Math.max(0, Math.min(100, (t / beats) * 100))}%` }} />)}{exp.map((o, i) => <i key={i} style={{ left: `${(o / beats) * 100}%` }} />)}</div>
     </div>
   );

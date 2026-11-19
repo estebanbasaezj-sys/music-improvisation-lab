@@ -1,5 +1,5 @@
 // "Mi camino": niveles → unidades → nodos (Aprende, Practica, Toca, Desafío), al estilo Duolingo.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LEVELS, PathNode, Unit, nodeById, nodesFor, resolveKey, unitsFor } from '../learn/curriculum';
 import { Celebration, ItemSession, SessionResult, buildItems, commitSession, useGenCtx } from '../learn/LessonRunner';
 import { completeNode, markNodesByTest, unlockAchievement, useAppState, addXp } from '../progress/store';
@@ -26,12 +26,29 @@ export function usePathState(inst: InstrumentId) {
   return { nodes, ps, doneSet, current };
 }
 
+const norm = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 export function PathPage() {
   const s = useAppState();
   const inst = s.instrument;
   const { nodes, ps, doneSet, current } = usePathState(inst);
   const [sel, setSel] = useState<string | null>(null);
   const units = unitsFor(inst);
+  // por defecto solo se abre donde vas: tu nivel y tu unidad actual (los demás capítulos quedan cerrados)
+  const [openLv, setOpenLv] = useState<Set<number>>(() => new Set([current.unit.level]));
+  const [openU, setOpenU] = useState<Set<string>>(() => new Set([current.unit.id]));
+  const [q, setQ] = useState('');
+  const [jump, setJump] = useState(0);
+  const toggle = <T,>(set: Set<T>, v: T) => { const n = new Set(set); if (n.has(v)) n.delete(v); else n.add(v); return n; };
+  const goCurrent = () => { setOpenLv((x) => new Set([...x, current.unit.level])); setOpenU((x) => new Set([...x, current.unit.id])); setQ(''); setJump((j) => j + 1); };
+  useEffect(() => {
+    if (!jump) return;
+    const id = window.setTimeout(() => document.querySelector('.node.cur')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+    return () => clearTimeout(id);
+  }, [jump]);
+  const query = norm(q.trim());
+  const match = (u: Unit) => !query || norm(`${u.title} ${u.goal} ${u.tips.map((t) => t.title).join(' ')}`).includes(query);
+  const allOpen = openLv.size === LEVELS.length && units.every((u) => openU.has(u.id));
   return (
     <div className="page path-page">
       <div className="path-hero">
@@ -45,46 +62,84 @@ export function PathPage() {
       ) : (
         <p className="lead">Nivel de partida según tu prueba: <b>{ps.level} · {LEVELS[ps.level].name}</b>. <a href="#/nivel">Repetir prueba</a></p>
       )}
+      <div className="path-tools">
+        <div className="level-map" role="navigation" aria-label="Niveles">
+          {LEVELS.map((lv) => {
+            const lvNodes = nodes.filter((n) => n.unit.level === lv.n);
+            const doneN = lvNodes.filter((n) => doneSet.has(n.id)).length;
+            const pct = lvNodes.length ? doneN / lvNodes.length : 0;
+            return (
+              <button key={lv.n} className={`lm-chip ${current.unit.level === lv.n ? 'cur' : ''} ${pct === 1 ? 'full' : ''}`} style={{ ['--lv' as string]: lv.color }}
+                onClick={() => { setOpenLv((x) => new Set([...x, lv.n])); window.setTimeout(() => document.getElementById(`lv-${lv.n}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40); }}
+                title={`${lv.name}: ${doneN}/${lvNodes.length}`}>
+                <b>{pct === 1 ? '✓' : lv.n}</b><span>{lv.name}</span><i style={{ width: `${pct * 100}%` }} />
+              </button>
+            );
+          })}
+        </div>
+        <div className="row gap wrap">
+          <button className="btn primary" onClick={goCurrent}>📍 Ir a mi lección</button>
+          <button className="btn" onClick={() => { if (allOpen) { setOpenLv(new Set([current.unit.level])); setOpenU(new Set([current.unit.id])); } else { setOpenLv(new Set(LEVELS.map((l) => l.n))); setOpenU(new Set(units.map((u) => u.id))); } }}>{allOpen ? '▴ Cerrar todo' : '▾ Abrir todo'}</button>
+          <input className="search grow" placeholder="Buscar unidad: blues, ii-V, arpegios, Si La Sol…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+      </div>
       {LEVELS.map((lv) => {
-        const lvUnits = units.filter((u) => u.level === lv.n);
+        const lvUnits = units.filter((u) => u.level === lv.n && match(u));
         const lvNodes = nodes.filter((n) => n.unit.level === lv.n);
         const doneN = lvNodes.filter((n) => doneSet.has(n.id)).length;
+        if (query && !lvUnits.length) return null;
+        const open = !!query || openLv.has(lv.n);
         return (
-          <section key={lv.n} className="level" style={{ ['--lv' as string]: lv.color }}>
-            <div className="level-head">
+          <section key={lv.n} id={`lv-${lv.n}`} className={`level ${open ? 'open' : 'closed'}`} style={{ ['--lv' as string]: lv.color }}>
+            <button className="level-head" onClick={() => setOpenLv(toggle(openLv, lv.n))} aria-expanded={open}>
               <span className="lv-badge">Nivel {lv.n}</span>
-              <div><h2>{lv.name}</h2><p className="muted small">{lv.desc}</p></div>
-              <span className="lv-prog">{doneN}/{lvNodes.length}</span>
-            </div>
-            {lvUnits.map((u) => <UnitBlock key={u.id} unit={u} unitNo={units.indexOf(u) + 1} nodes={nodes.filter((n) => n.unit.id === u.id)} doneSet={doneSet} ps={ps} current={current} sel={sel} setSel={setSel} inst={inst} />)}
+              <div className="lh-text"><h2>{lv.name}</h2><p className="muted small">{lv.desc}</p></div>
+              <span className="lv-prog">{doneN === lvNodes.length && lvNodes.length ? '✓ ' : ''}{doneN}/{lvNodes.length}</span>
+              <span className="chev" aria-hidden="true">▾</span>
+            </button>
+            {open && lvUnits.map((u) => (
+              <UnitBlock key={u.id} unit={u} unitNo={units.indexOf(u) + 1} nodes={nodes.filter((n) => n.unit.id === u.id)} doneSet={doneSet} ps={ps} current={current} sel={sel} setSel={setSel} inst={inst}
+                open={!!query || openU.has(u.id)} onToggle={() => setOpenU(toggle(openU, u.id))} />
+            ))}
           </section>
         );
       })}
+      {query && !units.some(match) && <p className="muted">Ninguna unidad coincide con «{q}».</p>}
     </div>
   );
 }
 
 const TRAIL = [0, 46, 74, 46, 0, -46, -74, -46];
 
-function UnitBlock({ unit, unitNo, nodes, doneSet, ps, current, sel, setSel, inst }: { unit: Unit; unitNo: number; nodes: PathNode[]; doneSet: Set<string>; ps: ReturnType<typeof usePathState>['ps']; current: PathNode; sel: string | null; setSel: (s: string | null) => void; inst: InstrumentId }) {
+function UnitBlock({ unit, unitNo, nodes, doneSet, ps, current, sel, setSel, inst, open, onToggle }: { unit: Unit; unitNo: number; nodes: PathNode[]; doneSet: Set<string>; ps: ReturnType<typeof usePathState>['ps']; current: PathNode; sel: string | null; setSel: (s: string | null) => void; inst: InstrumentId; open: boolean; onToggle: () => void }) {
   const unitLocked = nodes[0].index > current.index;
   const flip = unitNo % 2 === 0 ? -1 : 1;
   const unitDone = nodes.every((n) => doneSet.has(n.id));
+  const stars = nodes.reduce((a, n) => a + (ps.nodes[n.id]?.stars ?? 0), 0);
+  const isCurUnit = current.unit.id === unit.id;
   return (
-    <div className={`unit ${unitLocked ? 'locked' : ''} ${unitDone ? 'complete' : ''}`}>
-      <div className="unit-banner">
+    <div className={`unit ${unitLocked ? 'locked' : ''} ${unitDone ? 'complete' : ''} ${open ? 'open' : 'closed'}`}>
+      <div className="unit-banner" role="button" tabIndex={0} aria-expanded={open} onClick={onToggle} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}>
         <div className="ub-text">
           <span className="ub-kicker">Nivel {unit.level} · Unidad {unitNo}{unit.track !== 'shared' ? ` · ${INSTRUMENT_LABEL[unit.track]}` : ''}</span>
           <h3>{unit.title}</h3>
           <p>{unit.goal}</p>
+          {!open && (
+            <div className="ub-mini">
+              {nodes.map((n) => <i key={n.id} className={doneSet.has(n.id) ? 'done' : n.id === current.id ? 'cur' : ''} />)}
+              {stars > 0 && <span>★ {stars}/{nodes.length * 3}</span>}
+              {isCurUnit && <span className="ub-here">📍 Estás aquí</span>}
+            </div>
+          )}
         </div>
-        <div className="ub-actions">
+        <div className="ub-actions" onClick={(e) => e.stopPropagation()}>
           {unit.guide?.length ? <details className="guide"><summary>📘 Guía</summary><div className="guide-pop">{unit.guide.map((g) => <a key={g} href={`#/leccion/${g}`}>{lessonById(g)?.title}</a>)}</div></details> : null}
           {unitLocked && <a className="ub-skip" href={`#/saltar/${unit.id}`} title="Prueba para saltar hasta aquí">⏩ Saltar</a>}
           {unitDone && <span className="ub-done" title="Unidad completada">✓</span>}
+          <button className="ub-chev" onClick={onToggle} aria-label={open ? 'Cerrar unidad' : 'Abrir unidad'}>▾</button>
         </div>
       </div>
-      <div className="trail">
+      {open && <div className="trail">
         {nodes.map((n, k) => {
           const done = doneSet.has(n.id);
           const isCur = n.id === current.id;
@@ -112,7 +167,7 @@ function UnitBlock({ unit, unitNo, nodes, doneSet, ps, current, sel, setSel, ins
         <div className={`trail-art ${flip > 0 ? 'left' : 'right'}`} aria-hidden="true">
           <InstrumentArt inst={inst} size={118} mood={unitLocked ? 'none' : unitDone ? 'happy' : 'wow'} className={unitLocked ? 'dim' : 'bob'} />
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

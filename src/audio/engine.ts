@@ -322,6 +322,8 @@ export function stopSequence() {
 // Todo lo que suena más de un instante se registra aquí con su función de parada. El botón flotante
 // aparece mientras haya algo registrado (o notas agendadas a futuro) y `stopAllAudio` lo detiene todo.
 const activity = new Map<string, () => void>();
+const activityLabel = new Map<string, string>();
+const DEFAULT_LABEL: Record<string, string> = { seq: 'Frase o ejemplo', transport: 'Acompañamiento', studio: 'Estudio: audio cargado' };
 const activitySubs = new Set<() => void>();
 const drumSources = new Set<Tone.ToneBufferSource>();
 let busyUntil = 0;
@@ -333,16 +335,35 @@ function markBusy(t: number, dur: number) {
   busyUntil = Math.max(busyUntil, t + dur);
   if (!was) notifyActivity();
 }
-/** Registra algo que está sonando. Si ya había algo con el mismo id (p.ej. otro acompañamiento), lo para antes. */
-export function registerActivity(id: string, stop: () => void) {
+/**
+ * Registra algo que está sonando, con un nombre para la barra «Sonando ahora». Si ya había algo con el mismo
+ * id (p. ej. otro acompañamiento) lo para antes. El video de YouTube y el audio de la app no suenan a la vez:
+ * iniciar uno pausa el otro.
+ */
+export function registerActivity(id: string, stop: () => void, label?: string) {
   const prev = activity.get(id);
   activity.delete(id);
   if (prev && prev !== stop) { try { prev(); } catch { /* ya parado */ } }
+  const isVideo = id.startsWith('yt-');
+  for (const [k, f] of [...activity]) {
+    if (k.startsWith('yt-') !== isVideo) { activity.delete(k); activityLabel.delete(k); try { f(); } catch { /* ya parado */ } }
+  }
   activity.set(id, stop);
+  activityLabel.set(id, label ?? DEFAULT_LABEL[id] ?? 'Audio');
   notifyActivity();
 }
+export function setActivityLabel(id: string, label: string) {
+  if (activity.has(id)) { activityLabel.set(id, label); notifyActivity(); }
+}
 export function endActivity(id: string) {
+  activityLabel.delete(id);
   if (activity.delete(id)) notifyActivity();
+}
+/** Nombres de lo que suena ahora (para la barra «Sonando ahora»). */
+export function activityLabels(): string[] {
+  const out = [...activityLabel.values()];
+  if (!out.length && mixer && busyUntil > Tone.now()) out.push('Ejemplo de audio');
+  return out;
 }
 export function isAudioActive() {
   return activity.size > 0 || (!!mixer && busyUntil > Tone.now());
@@ -356,6 +377,7 @@ export const STOP_ALL_EVENT = 'mil:stopall';
 export function stopAllAudio() {
   const fns = [...activity.values()];
   activity.clear();
+  activityLabel.clear();
   fns.forEach((f) => { try { f(); } catch { /* ignorar */ } });
   stopSequence();
   const tr = Tone.getTransport();
@@ -395,11 +417,11 @@ export async function playSequence(
   voice: Voice,
   events: NoteEvent[],
   bpm: number,
-  opts: { swing?: boolean; onNote?: (index: number) => void; onEnd?: () => void } = {}
+  opts: { swing?: boolean; onNote?: (index: number) => void; onEnd?: () => void; label?: string } = {}
 ) {
   await ensureAudio();
   stopSequence();
-  registerActivity('seq', () => { stopSequence(); opts.onEnd?.(); });
+  registerActivity('seq', () => { stopSequence(); opts.onEnd?.(); }, opts.label);
   const spb = 60 / bpm;
   const t0 = Tone.now() + 0.08;
   const r = swingRatio(bpm);

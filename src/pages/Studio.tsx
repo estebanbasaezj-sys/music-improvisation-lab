@@ -107,7 +107,7 @@ export function StudioPage() {
     s.start(ctx.currentTime + 0.05, off);
     s.onended = () => { if (src.current === s) { setPlaying(false); endActivity('studio'); } };
     src.current = s;
-    registerActivity('studio', studioStopper);
+    registerActivity('studio', studioStopper, `Estudio: audio cargado${speed !== 1 ? ` a ${Math.round(speed * 100)} %` : ''}`);
     startInfo.current = { ctxT: ctx.currentTime + 0.05, origPos: off * speed };
     setPlaying(true);
     const tick = () => {
@@ -250,7 +250,7 @@ export function StudioPage() {
             {notes && <>
               <label className="toggle"><input type="checkbox" checked={allNotes} onChange={() => setAllNotes(!allNotes)} />Todas las notas (no solo la melodía)</label>
               <select value={quant} onChange={(e) => setQuant(+e.target.value)}><option value={0.5}>Cuantizar a corcheas</option><option value={0.25}>Cuantizar a semicorcheas</option><option value={1}>Cuantizar a negras</option></select>
-              <button className="btn" onClick={() => playSequence(voiceFor(t.instrument), melody.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), an.bpm * speed)}>▶ Escuchar la transcripción</button>
+              <button className="btn" onClick={() => playSequence(voiceFor(t.instrument), melody.map((n) => ({ midi: n.midi, start: n.start, dur: n.dur })), an.bpm * speed, { label: 'Estudio: la transcripción (notas detectadas)' })}>▶ Escuchar la transcripción</button>
               <button className="btn" onClick={() => stopSequence()}>■</button>
               <button className="btn" disabled={!melody.length} onClick={() => { addVocab({ title: `Transcripción: ${name} (c. ${selBars[0] + 1}–${selBars[1]})`, source: 'Estudio de transcripción', key: noteName(keyRoot), chart, notes: melody, instrument: app.instrument }); alert('Guardada en Mi vocabulario.'); }}>☆ Guardar en vocabulario</button>
             </>}

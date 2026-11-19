@@ -54,9 +54,12 @@ export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: 
   const stopAll = () => { player.current?.stop(); stopSequence(); setMode('stop'); setActive(null); setCallInfo(null); };
   useOnStopAll(() => { setMode('stop'); setActive(null); setCallInfo(null); });
 
+  const name = title ?? 'Frase';
+  const MODE_LABEL: Record<string, string> = { full: 'línea + acompañamiento', you: 'solo la base (tocas tú)', call: 'repite después de mí', line: 'solo la línea' };
   const startBacking = async (evs: ChordEvent[], melody: LineNote[], indexMap: number[], m: typeof mode, onBeat?: (b: number) => void, melodyOn = true) => {
     stopAll();
     const p = new BackingPlayer({
+      label: `${name} · ${MODE_LABEL[m]}`,
       style, bpm, countIn: true, metronome: false, mute: { piano: t.instrument === 'piano' && m === 'you', guitar: t.instrument === 'guitar' && m === 'you' },
       melodyVoice, melodyOn, onStop: () => { setMode('stop'); setActive(null); setCallInfo(null); }, onMelodyNote: (i) => setActive(indexMap[i] ?? null), onBeat: (b) => onBeat?.(b),
     });
@@ -73,6 +76,7 @@ export function SoloPlayer({ events, notes, keyRoot, blues, style: style0, bpm: 
     evs.forEach(({ i }) => idx.push(i));
     setMode('line');
     playSequence(melodyVoice, evs.map(({ n }) => ({ midi: n.midi, start: n.start - from, dur: n.dur })), bpm, {
+      label: `${name} · solo la línea · ♩ = ${bpm}`,
       swing: style === 'swing' || style === 'blues', onNote: (k) => setActive(idx[k]), onEnd: () => { setMode('stop'); setActive(null); },
     });
   };

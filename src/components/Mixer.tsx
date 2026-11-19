@@ -1,7 +1,7 @@
 // Control global del sonido: qué instrumentos suenan en cualquier acompañamiento (mezclador por capas)
 // y el botón flotante para detener todo lo que esté sonando.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Bus, STOP_ALL_EVENT, isAudioActive, setBusVolume, stopAllAudio, subscribeActivity } from '../audio/engine';
+import { Bus, STOP_ALL_EVENT, activityLabels, isAudioActive, setBusVolume, stopAllAudio, subscribeActivity } from '../audio/engine';
 import { COMP_LABEL, CompInstrument } from '../audio/backing';
 import { DEFAULT_LAYERS, Layers, update, useAppState } from '../progress/store';
 
@@ -123,15 +123,16 @@ export function useOnStopAll(fn: () => void) {
   }, []);
 }
 
-/** Botón flotante: aparece mientras suena algo; también responde a la tecla Esc. */
+/** Barra «Sonando ahora»: aparece mientras suena algo, dice qué es y permite detenerlo (también con Esc). */
 export function StopAllButton() {
   const active = useAudioActive();
   const [, force] = useState(0);
-  // las notas agendadas a futuro terminan solas: revisar cada medio segundo mientras el botón está visible
+  // los nombres cambian (tempo, otra frase) y las notas agendadas terminan solas: refrescar mientras se ve
   useEffect(() => {
-    if (!active) return;
+    const un = subscribeActivity(() => force((x) => x + 1));
+    if (!active) return un;
     const id = window.setInterval(() => force((x) => x + 1), 500);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); un(); };
   }, [active]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -144,9 +145,17 @@ export function StopAllButton() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   if (!isAudioActive()) return null;
+  const labels = activityLabels();
   return (
-    <button className="stop-all" onClick={stopAllAudio} title="Detener todo el audio (Esc)">
-      <span className="sq" aria-hidden="true" /> Detener audio <kbd>Esc</kbd>
-    </button>
+    <div className="now-playing" role="status" aria-live="polite">
+      <span className="np-eq" aria-hidden="true"><i /><i /><i /></span>
+      <div className="np-text">
+        <small>Sonando ahora</small>
+        <b title={labels.join(' + ')}>{labels.join(' + ') || 'Audio'}</b>
+      </div>
+      <button className="np-stop" onClick={stopAllAudio} title="Detener todo el audio (Esc)">
+        <span className="sq" aria-hidden="true" /> Detener <kbd>Esc</kbd>
+      </button>
+    </div>
   );
 }

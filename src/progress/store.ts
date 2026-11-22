@@ -177,7 +177,10 @@ export const localAdapter: StorageAdapter = {
   },
 };
 
-let adapter: StorageAdapter = typeof localStorage !== 'undefined' ? localAdapter : { load: () => null, save: () => {} };
+// leer `localStorage` puede lanzar un error (navegadores dentro de otras apps o con cookies bloqueadas):
+// antes eso dejaba la página en blanco; ahora la app funciona igual, solo que sin guardar el progreso
+const storageOk = (() => { try { return typeof localStorage !== 'undefined' && !!localStorage; } catch { return false; } })();
+let adapter: StorageAdapter = storageOk ? localAdapter : { load: () => null, save: () => {} };
 let state: AppState = merge(adapter.load());
 const listeners = new Set<() => void>();
 

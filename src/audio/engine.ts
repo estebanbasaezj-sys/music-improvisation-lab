@@ -3,6 +3,7 @@
 // Opcionalmente envía MIDI a un sintetizador/plugin externo (Web MIDI API).
 import * as Tone from 'tone';
 import { getState } from '../progress/store';
+import { isMobile, resumeAudioNow } from './unlock';
 
 export type Voice = 'piano' | 'guitar' | 'sax' | 'bass' | 'rhodes';
 export type Bus = 'melody' | 'comp' | 'bass' | 'drums';
@@ -93,12 +94,16 @@ function ensureGraph() {
   return mixer;
 }
 
-/** Recorta cada ranura del sprite desde su ataque real (independiente del retardo del códec mp3). */
-function sliceSprite(buf: AudioBuffer, slotSec: number, count: number): AudioBuffer[] {
+/** Recorta cada ranura del sprite desde su ataque real (independiente del retardo del códec mp3).
+ *  Con `mono` mezcla los canales en uno: en celulares la mitad de memoria (los teléfonos modestos cerraban
+ *  la página al decodificar todas las muestras en estéreo). */
+function sliceSprite(buf: AudioBuffer, slotSec: number, count: number, mono = false): AudioBuffer[] {
   const ctx = Tone.getContext().rawContext as BaseAudioContext;
   const sr = buf.sampleRate;
   const slotLen = Math.floor(slotSec * sr);
   const ch0 = buf.getChannelData(0);
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c));
+  const outCh = mono ? 1 : buf.numberOfChannels;
   const out: AudioBuffer[] = [];
   for (let i = 0; i < count; i++) {
     const s0 = i * slotLen;
@@ -110,11 +115,12 @@ function sliceSprite(buf: AudioBuffer, slotSec: number, count: number): AudioBuf
     while (on < s1 && Math.abs(ch0[on]) < thr) on++;
     on = Math.max(s0, on - Math.floor(0.002 * sr));
     const len = Math.max(1, s1 - on - Math.floor(0.01 * sr));
-    const b = ctx.createBuffer(buf.numberOfChannels, len, sr);
-    for (let c = 0; c < buf.numberOfChannels; c++) {
-      const src = buf.getChannelData(c).subarray(on, on + len);
+    const b = ctx.createBuffer(outCh, len, sr);
+    for (let c = 0; c < outCh; c++) {
       const dst = b.getChannelData(c);
-      dst.set(src);
+      if (mono && chans.length > 1) {
+        for (let k = 0; k < len; k++) { let v = 0; for (const ch of chans) v += ch[on + k]; dst[k] = v / chans.length; }
+      } else dst.set(chans[c].subarray(on, on + len));
       // normalización suave por ranura (evita saltos de volumen entre notas)
       const g = peak > 0 ? Math.min(4, 0.6 / peak) : 1;
       const fade = Math.floor(0.03 * sr);
@@ -134,13 +140,24 @@ export function loadSamples(base = './samples/'): Promise<void> {
       setStatus({ state: 'loading', loaded: 0 });
       const man: Manifest = await (await fetch(base + 'manifest.json')).json();
       bank.license = man.license;
-      const entries = Object.entries(man.instruments);
+      // primero lo que se usa enseguida (tu instrumento y la base), de a uno: decodificar todo a la vez
+      // duplicaba el pico de memoria y en celulares la página se cerraba
+      const st = getState();
+      const mine = st.instrument === 'sax' ? st.settings.saxType : st.instrument;
+      const order = [mine, 'piano', 'bass', 'drums_jazz'];
+      const rank = (n: string) => { const i = order.indexOf(n); return i < 0 ? order.length : i; };
+      const entries = Object.entries(man.instruments).sort((a, b) => rank(a[0]) - rank(b[0]));
+      const mono = isMobile();
       setStatus({ total: entries.length });
       let done = 0;
-      await Promise.all(entries.map(async ([name, ins]) => {
-        const arr = await (await fetch(base + ins.file)).arrayBuffer();
+      // las descargas van en paralelo (son mp3 livianos); la decodificación, de a una
+      const downloads = entries.map(([, ins]) => fetch(base + ins.file).then((r) => { if (!r.ok) throw new Error(`${ins.file}: ${r.status}`); return r.arrayBuffer(); }));
+      downloads.forEach((d) => d.catch(() => undefined));
+      let failed = 0;
+      const loadOne = async ([name, ins]: [string, Manifest['instruments'][string]], k: number) => {
+        const arr = await downloads[k];
         const decoded = await Tone.getContext().rawContext.decodeAudioData(arr);
-        const parts = sliceSprite(decoded, ins.slotSec, ins.slots.length);
+        const parts = sliceSprite(decoded, ins.slotSec, ins.slots.length, mono);
         if (name.startsWith('drums')) {
           const kit: Record<string, Tone.ToneAudioBuffer> = {};
           ins.slots.forEach((s, i) => { kit[s.id ?? String(s.midi)] = new Tone.ToneAudioBuffer(parts[i]); });
@@ -152,7 +169,12 @@ export function loadSamples(base = './samples/'): Promise<void> {
         }
         done++;
         setStatus({ loaded: done });
-      }));
+      };
+      for (let k = 0; k < entries.length; k++) {
+        // si falla un instrumento, ese sigue con síntesis y los demás cargan igual
+        try { await loadOne(entries[k], k); } catch { failed++; }
+      }
+      if (failed === entries.length) throw new Error('No se pudieron cargar las muestras de sonido');
       setStatus({ state: 'ready' });
     } catch (e) {
       setStatus({ state: 'error', error: (e as Error).message });
@@ -165,15 +187,21 @@ export const sampleLicenses = () => bank.license;
 
 /** Debe llamarse desde un gesto del usuario (requisito de los navegadores). */
 export async function ensureAudio(): Promise<void> {
+  // síncrono, antes de cualquier espera: así cuenta como parte del toque (iPhone lo exige)
+  resumeAudioNow();
   if (!started) {
     started = (async () => {
-      await Tone.start();
       const mx = ensureGraph();
       await mx.reverb.ready;
       void loadSamples();
     })();
   }
   await started;
+  if (Tone.getContext().state !== 'running') {
+    // fuera de un toque el navegador no deja reanudar: se espera un momento y se sigue (el siguiente toque
+    // en la página lo reanuda; antes la app quedaba esperando para siempre y no volvía a sonar)
+    await Promise.race([Tone.start().catch(() => undefined), new Promise((r) => setTimeout(r, 1200))]);
+  }
 }
 export const audioReady = () => !!mixer;
 

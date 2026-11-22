@@ -5,7 +5,7 @@ import { TimeStaff } from '../instruments/TimeStaff';
 import { rhythmOnsets, scoreRhythm } from './items';
 import { Tone, ensureAudio, triggerDrum, click, cancelScheduled, waitSamples } from '../audio/engine';
 import { ClapListener } from '../recording/onsets';
-import { NoteSegmenter, PitchListener, compareSequences, freqToMidi, isEmbedded, micErrorText } from '../recording/pitch';
+import { NoteSegmenter, PitchListener, compareSequences, freqToMidi, isEmbedded, micErrorText, newAudioContext } from '../recording/pitch';
 import { UploadCheck } from './UploadCheck';
 import { chordScores, chromaFromMagnitudes, PC_NAMES } from '../audio/analysis';
 import { noteNameEs, pitchFromMidi, noteName } from '../theory/notes';
@@ -299,8 +299,12 @@ export function MicChord({ pcs, root, symbol, onResult, onSkip }: { pcs: number[
   const start = async () => {
     setErr('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-      const ctx = new AudioContext();
+      const ctx = newAudioContext(); // antes de pedir el micrófono (iPhone: dentro del toque)
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      } catch (e) { void ctx.close().catch(() => undefined); throw e; }
+      if (ctx.state !== 'running') await ctx.resume().catch(() => undefined);
       const an = ctx.createAnalyser();
       an.fftSize = 8192;
       ctx.createMediaStreamSource(stream).connect(an);

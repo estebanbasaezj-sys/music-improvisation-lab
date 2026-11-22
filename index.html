@@ -10,11 +10,66 @@
     <link rel="apple-touch-icon" href="./icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- la fuente no bloquea la carga: con mala señal (o si Google Fonts está bloqueado) la app abre igual -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
     <title>Music Improvisation Lab</title>
+    <style>
+      html, body { background: #12141c; color: #e9ebf2; margin: 0; }
+      .boot { min-height: 70vh; display: grid; place-content: center; gap: .6rem; text-align: center; font: 600 1.05rem system-ui, -apple-system, sans-serif; color: #9aa2b8; padding: 1rem; }
+      .boot img { width: 64px; height: 64px; margin: 0 auto; }
+      #rescue { display: none; max-width: 520px; margin: 1rem auto; padding: 1rem 1.2rem; border: 1px solid #f2b544; border-radius: 14px; background: #1f2331; font: 1rem/1.45 system-ui, -apple-system, sans-serif; }
+      #rescue, #rescue h2, #rescue p { color: #e9ebf2; }
+      #rescue h2 { margin: 0 0 .4rem; font-size: 1.15rem; }
+      #rescue button { font: 700 1rem system-ui, sans-serif; padding: .6rem 1.1rem; border-radius: 10px; border: 0; background: #f2b544; color: #12141c; margin-top: .6rem; }
+      #rescue code { display: block; margin-top: .6rem; font-size: .8rem; color: #9aa2b8; background: #12141c; padding: .5rem .6rem; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+    </style>
+    <script>
+      // Pantalla de rescate: si la app no logra arrancar (navegador antiguo, error o conexión muy lenta),
+      // se explica qué pasa y se ofrece recargar, en vez de dejar la página en blanco.
+      (function () {
+        var shown = false;
+        function show(title, text, detail) {
+          if (window.__milBooted) return;
+          var r = document.getElementById('rescue');
+          if (!r) { document.addEventListener('DOMContentLoaded', function () { show(title, text, detail); }); return; }
+          shown = true;
+          r.innerHTML = '';
+          var h = document.createElement('h2'); h.textContent = title; r.appendChild(h);
+          var p = document.createElement('p'); p.textContent = text; r.appendChild(p);
+          var b = document.createElement('button'); b.textContent = 'Recargar'; b.onclick = function () { location.reload(); }; r.appendChild(b);
+          if (detail) { var c = document.createElement('code'); c.textContent = detail + '\n' + navigator.userAgent; r.appendChild(c); }
+          r.style.display = 'block';
+        }
+        window.__milRescue = show;
+        window.addEventListener('error', function (e) {
+          if (window.__milBooted) return;
+          var t = e.target;
+          if (t && t !== window && t.tagName) {
+            // un archivo que no se descargó: solo importan los de la propia app (no la fuente, ni imágenes)
+            var url = t.src || t.href || '';
+            if ((t.tagName === 'SCRIPT' || t.tagName === 'LINK') && url.indexOf(location.origin) === 0) {
+              show('No se pudo descargar la app', 'Revisa tu conexión a internet y vuelve a intentarlo.', 'No cargó: ' + url);
+            }
+          } else {
+            show('Tu navegador no pudo abrir la app', 'Actualiza el navegador (Safari o Chrome) o ábrela desde otro navegador. Si estás dentro de Instagram, Facebook u otra app, toca ⋯ y elige «Abrir en el navegador».', String(e.message || e.error || ''));
+          }
+        }, true);
+        setTimeout(function () {
+          if (!window.__milBooted && !shown) show('Está tardando más de lo normal…', 'La conexión parece lenta. Espera unos segundos más o recarga la página.', '');
+        }, 20000);
+        // cuando la app arranca, se oculta el aviso de «tardando»
+        var iv = setInterval(function () {
+          if (window.__milBooted) { var r = document.getElementById('rescue'); if (r) r.style.display = 'none'; clearInterval(iv); }
+        }, 500);
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="rescue" role="alert"></div>
+    <div id="root"><div class="boot"><img src="./icon.svg" alt="" /><span>Cargando Music Improvisation Lab…</span></div></div>
+    <script nomodule>
+      window.__milRescue && window.__milRescue('Tu navegador es demasiado antiguo', 'Actualiza tu teléfono o abre el enlace en una versión reciente de Safari o Chrome.', 'Sin soporte de módulos JavaScript');
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -99,14 +99,25 @@ export function compareSequences(target: number[], played: number[]) {
   return { matched, correct: dp[a.length][b.length], total: a.length, extra: Math.max(0, b.length - dp[a.length][b.length]) };
 }
 
+/** AudioContext nativo (con el prefijo de Safari antiguo si hace falta). */
+export function newAudioContext(): AudioContext {
+  const C = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  return new C();
+}
+
 /** Escucha el micrófono y reporta alturas. */
 export class PitchListener {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private raf = 0;
   async start(onPitch: (r: PitchResult | null, tMs: number) => void) {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    this.ctx = new AudioContext();
+    // el contexto se crea ANTES de pedir el micrófono, todavía dentro del toque: en iPhone uno creado después
+    // queda suspendido y el análisis no recibe sonido
+    this.ctx = newAudioContext();
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    } catch (e) { void this.ctx.close().catch(() => undefined); this.ctx = null; throw e; }
+    if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => undefined);
     const src = this.ctx.createMediaStreamSource(this.stream);
     const an = this.ctx.createAnalyser();
     an.fftSize = 2048;

@@ -24,6 +24,7 @@ import { RepertoirePage, TunePage } from './pages/Repertoire';
 import { AdminPage } from './pages/Admin';
 import { PlansPage } from './pages/Plans';
 import { mainNav } from './product/profile';
+import { ErrorBoundary, inAppBrowser } from './components/ErrorBoundary';
 
 const NAV: { path: string; label: string; icon: IconName }[] = [
   { path: 'hoy', label: 'Hoy', icon: 'sun' },
@@ -113,8 +114,24 @@ export function App() {
         {main && <button className="nav-more" onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen}><span className="ico">{moreOpen ? '▴' : '▾'}</span><span>{moreOpen ? 'Menos' : 'Más'}</span></button>}
       </nav>
       <StreakOverlay />
-      <main key={s.instrument + route} className={['nodo', 'saltar', 'repaso'].includes(seg) || (seg === 'nivel') ? 'focus' : ''}>{page}</main>
+      <main key={s.instrument + route} className={['nodo', 'saltar', 'repaso'].includes(seg) || (seg === 'nivel') ? 'focus' : ''}>
+        <InAppBanner />
+        <ErrorBoundary where={seg || 'hoy'}>{page}</ErrorBoundary>
+      </main>
       <StopAllButton />
+    </div>
+  );
+}
+
+function InAppBanner() {
+  const app = inAppBrowser();
+  const [hidden, setHidden] = useState(() => { try { return sessionStorage.getItem('mil-inapp') === '1'; } catch { return false; } });
+  if (!app || hidden) return null;
+  const close = () => { setHidden(true); try { sessionStorage.setItem('mil-inapp', '1'); } catch { /* nada */ } };
+  return (
+    <div className="inapp-banner" role="note">
+      <span>Estás dentro de <b>{app}</b>: su navegador suele bloquear el sonido y el micrófono. Para que todo funcione, toca <b>⋯</b> y elige <b>Abrir en el navegador</b> (Safari o Chrome).</span>
+      <button className="link small" onClick={close} aria-label="Cerrar aviso">Entendido</button>
     </div>
   );
 }

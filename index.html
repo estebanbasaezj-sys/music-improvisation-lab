@@ -51,6 +51,8 @@
               show('No se pudo descargar la app', 'Revisa tu conexión a internet y vuelve a intentarlo.', 'No cargó: ' + url);
             }
           } else {
+            // errores de scripts ajenos (extensiones, el contenedor de la página) no impiden que la app arranque
+            if (e.message === 'Script error.' || (e.filename && e.filename.indexOf(location.origin) !== 0)) return;
             show('Tu navegador no pudo abrir la app', 'Actualiza el navegador (Safari o Chrome) o ábrela desde otro navegador. Si estás dentro de Instagram, Facebook u otra app, toca ⋯ y elige «Abrir en el navegador».', String(e.message || e.error || ''));
           }
         }, true);

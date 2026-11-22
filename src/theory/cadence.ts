@@ -112,7 +112,7 @@ export function nextChord(evts: ChordEvent[], i: number, loops?: boolean): Chord
 }
 
 /** Opciones de escala para el acorde i de la cadencia, la primera es la recomendada. */
-export function scaleOptions(cad: CadenceDef, evts: ChordEvent[], i: number): ScaleOption[] {
+export function scaleOptions(cad: Pick<CadenceDef, 'blues' | 'loops' | 'minor'>, evts: ChordEvent[], i: number): ScaleOption[] {
   const c = evts[i].chord;
   const r = c.root;
   const roman = evts[i].roman ?? '';
@@ -366,7 +366,7 @@ function phrasesFrom(ctx: ExCtx, segs: Seg[], texts: string[], fill = ''): ExPhr
     segs.forEach((s, k) => {
       const prev = out[out.length - 1];
       if (s.same && prev) { prev.end = s.end; if (texts[k]) prev.text += ` ${texts[k]}`; return; }
-      out.push({ start: s.start, end: s.end, title: `Compás ${s.start / 4 + 1} · ${sym(ctx, s.chord)}`, text: texts[k] ?? '' });
+      out.push({ start: s.start, end: s.end, title: `Compás ${Math.floor(s.start / 4 + 1e-9) + 1} · ${sym(ctx, s.chord)}`, text: texts[k] ?? '' });
     });
     return out.map((p) => ({ ...p, text: p.text.trim() || fill }));
   }
@@ -425,7 +425,7 @@ function exScaleConnected(ctx: ExCtx): ExResult {
     const startNote = k === 0 ? cur : step(cur, s.pcs, dir, lo - 12, hi + 12);
     let m = startNote;
     const holdLast = s.last;
-    const n = holdLast ? slots - 3 : slots;
+    const n = holdLast ? (slots >= 4 ? slots - 3 : Math.max(0, slots - 1)) : slots;
     for (let j = 0; j < n; j++) {
       run.push(m);
       let nx = step(m, s.pcs, dir, lo - 12, hi + 12);
@@ -433,14 +433,15 @@ function exScaleConnected(ctx: ExCtx): ExResult {
       m = nx;
     }
     notes.push(...eighths(run, s.start, 'escala'));
-    cur = run[run.length - 1];
+    if (run.length) cur = run[run.length - 1];
     if (holdLast) {
       const land = nearestPc([degPc(s.chord, '3'), degPc(s.chord, '1')], step(cur, s.pcs, dir, lo, hi), lo, hi);
       notes.push({ midi: land, start: s.start + n * 0.5, dur: s.beats - n * 0.5, tech: 'escala' });
     }
+    const first = run[0] ?? cur;
     texts.push(k === 0
-      ? `Empieza en ${nm(ctx, run[0], s.chord, s.pick)} con ${scaleText(ctx, s)} y sigue ${dir === 1 ? 'subiendo' : 'bajando'}.`
-      : s.same ? '' : `Al llegar ${sym(ctx, s.chord)} no vuelves a la fundamental: desde ${nm(ctx, run[0], s.chord, s.pick)} sigues con ${ctx.scaleName(s.pick)}.`);
+      ? `Empieza en ${nm(ctx, first, s.chord, s.pick)} con ${scaleText(ctx, s)} y sigue ${dir === 1 ? 'subiendo' : 'bajando'}.`
+      : s.same ? '' : `Al llegar ${sym(ctx, s.chord)} no vuelves a la fundamental: desde ${nm(ctx, first, s.chord, s.pick)} sigues con ${ctx.scaleName(s.pick)}.`);
   });
   return { notes: finalize(notes, ctx), phrases: phrasesFrom(ctx, segs, texts) };
 }

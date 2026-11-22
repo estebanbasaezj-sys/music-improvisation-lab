@@ -2,10 +2,15 @@
 // Metodología: imitar, asimilar, innovar (una idea por chorus, vocabulario en contexto armónico).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackingStyle } from '../audio/backing';
-import { IDEAS, IdeaId, generateSolo, ideaById } from '../theory/improv';
+import { IDEAS, IdeaId, ideaById } from '../theory/improv';
+import { LEVELS, Level, WAYS, WAY_FROM_IDEA, WayId, generateWay, passageOptions, wayAvailable, wayById } from '../theory/ways';
+import { ScalePick, modeOver, pickNotes, pickPcs } from '../theory/cadence';
+import { scaleById } from '../theory/scales';
+import { trackFeature } from '../telemetry/telemetry';
+import { WayPicker, SPEED_FACTOR, Speed } from './WayPicker';
 import { ChordEvent, progressionById, realize } from '../theory/progressions';
 import { Note, noteName, parseNote } from '../theory/notes';
-import { LineNote, analyzeLine } from '../theory/line';
+import { ChosenScale, LineNote, analyzeLine } from '../theory/line';
 import { sliceEvents, sliceLine } from '../theory/section';
 import { useAppState } from '../progress/store';
 import { SoloPlayer, PlayerPhrase } from './SoloPlayer';
@@ -47,19 +52,52 @@ export function Workshop(props: WorkshopProps) {
     return props.events ?? [];
   }, [prog, key, props.events]);
   const keyRoot = parseNote(key);
-  const avail = IDEAS.filter((i) => blues || !i.needsBlues).map((i) => i.id);
-  const [idea, setIdea] = useState<IdeaId>(props.ideas?.find((i) => avail.includes(i)) ?? (blues ? 'blues' : 'guide'));
-  const [level, setLevel] = useState<1 | 2 | 3>(2);
+  const exNames = { note: t.noteName, chord: t.chordName };
+  // pasaje: toda la progresión, bloques de 4 compases o un ii–V–I concreto
+  const passages = useMemo(() => passageOptions(events, exNames), [events, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [passageId, setPassageId] = useState('all');
+  const passage = passages.find((p) => p.id === passageId) ?? passages[0];
+  const section = useMemo(() => (passage.from === 0 && passage.to >= events.reduce((s, e) => s + e.beats, 0) ? events : sliceEvents(events, passage.from, passage.to)), [events, passage.from, passage.to]);
+  useEffect(() => { if (!passages.some((p) => p.id === passageId)) setPassageId('all'); }, [passages, passageId]);
+  const kid = app.settings.profile === 'nino';
+  const [level, setLevel] = useState<Level>(kid ? 1 : 2);
+  const firstWay = (): WayId => {
+    const fromIdea = props.ideas?.map((i) => WAY_FROM_IDEA[i]).find((w) => wayAvailable(w, { events, level }).ok);
+    return fromIdea ?? (blues ? 'blues' : 'modos');
+  };
+  const [way, setWay] = useState<WayId>(firstWay);
   const [seed, setSeed] = useState(1);
+  const [speed, setSpeed] = useState<Speed>('normal');
   const [tab, setTab] = useState<Tab>('ideas');
   const range = soloRange(t.instrument, app.settings.saxType);
-  const solo = useMemo(() => generateSolo({ events, keyRoot, minor, blues, range, level, seed, idea, names: { note: t.noteName, chord: t.chordName } }), [events, key, minor, blues, range.lo, range.hi, level, seed, idea, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  // si la forma elegida no está disponible en este nivel o pasaje, se usa la primera disponible
+  const activeWay: WayId = wayAvailable(way, { events: section, level }).ok ? way : (WAYS.find((w) => wayAvailable(w.id, { events: section, level }).ok)?.id ?? 'modos');
+  const scaleName = (p: ScalePick) => `${t.noteName(p.root)} ${scaleById(p.scale).name.toLowerCase()}`;
+  const solo = useMemo(() => generateWay(activeWay, { events: section, keyRoot, minor, blues, range, level, seed, names: exNames, scaleName }), [activeWay, section, key, minor, blues, range.lo, range.hi, level, seed, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = useMemo<(ChosenScale | undefined)[] | undefined>(() => solo?.picks?.map((p) => ({ pcs: pickPcs(p), notes: pickNotes(p), name: scaleName(p) })), [solo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bpm = Math.round(LEVELS[level - 1].bpm * SPEED_FACTOR[speed]);
+  const w = wayById(activeWay);
+  useEffect(() => { trackFeature('generador-solos', { forma: activeWay, nivel: level }); }, [activeWay, level]);
   const ctxText = `${prog ? prog.name : props.title ?? 'Progresión'} en ${names(keyRoot)}${minor ? ' menor' : ''} (concierto)`;
   const chordsLine = useMemo(() => {
     const bars: string[][] = [];
     events.forEach((e) => (bars[e.bar] ??= []).push(t.chordName(e.chord)));
     return bars.map((b) => (b ?? []).join(' ')).join(' | ');
   }, [events, t]);
+  const scaleChips = useMemo(() => {
+    if (!solo?.picks) return [];
+    const seen = new Map<string, string>();
+    section.forEach((e, i) => {
+      const s = t.chordName(e.chord);
+      if (seen.has(s)) return;
+      const p = solo.picks![i];
+      const mode = modeOver(p, e.chord.root);
+      seen.set(s, `${scaleName(p)}${mode ? ` (= ${t.noteName(e.chord.root)} ${mode.toLowerCase()})` : ''}`);
+    });
+    return [...seen.entries()];
+  }, [solo, section]); // eslint-disable-line react-hooks/exhaustive-deps
+  const playerKey = `${activeWay}-${seed}-${level}-${key}-${passage.id}-${speed}`;
+  const source = `${w.name} · nivel ${level}`;
 
   return (
     <div className="workshop">
@@ -76,28 +114,22 @@ export function Workshop(props: WorkshopProps) {
         { value: 'turno', label: '4 · Tu turno' }, { value: 'ia', label: '✨ Profesor IA' },
       ]} />
       {(tab === 'ideas' || tab === 'repite' || tab === 'transforma') && (
+        <WayPicker events={section} passages={passages} passage={passage.id} onPassage={(id) => { setPassageId(id); setSeed(1); }} level={level} onLevel={(l) => { setLevel(l); setSeed(1); }}
+          way={activeWay} onWay={(id) => { setWay(id); setSeed(1); }} onAnother={() => setSeed(seed + 1)} speed={speed} onSpeed={setSpeed} />
+      )}
+      {(tab === 'ideas' || tab === 'repite' || tab === 'transforma') && !solo && <p className="warn">Esta forma no genera notas en este pasaje. Prueba otra forma u otro pasaje.</p>}
+      {tab === 'ideas' && solo && (
         <>
-          <div className="idea-grid">
-            {avail.map((id) => {
-              const d = ideaById(id);
-              return (
-                <button key={id} className={`idea ${idea === id ? 'on' : ''}`} onClick={() => setIdea(id)}>
-                  <b>{d.name}</b><span>{d.short}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="row gap wrap">
-            <Segmented size="sm" value={level} onChange={setLevel} options={[{ value: 1 as const, label: 'Sencillo' }, { value: 2 as const, label: 'Intermedio' }, { value: 3 as const, label: 'Avanzado' }]} />
-            <button className="btn" onClick={() => setSeed(seed + 1)}>🎲 Otro ejemplo</button>
-            <span className="muted small">{ideaById(idea).method}</span>
-          </div>
+          {scaleChips.length > 0 && (
+            <div className="wp-scales small"><span className="muted">Qué escala suena en cada acorde:</span> {scaleChips.map(([c, s]) => <span key={c} className="pill"><b>{c}</b> → {s}</span>)}</div>
+          )}
+          <SoloPlayer key={playerKey} events={section} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={bpm} phrases={solo.phrases} title={solo.title} summary={solo.summary} source={source} scales={chosen} />
+          <div className="cx-challenge"><b>🎯 Ahora tú:</b> {w.challenge} <span className="muted small">Pulsa «▶ Base (tocas tú)» y toca con esta forma; luego pasa a la siguiente con «Siguiente ▶».</span></div>
         </>
       )}
-      {tab === 'ideas' && <SoloPlayer key={`${idea}-${seed}-${level}-${key}`} events={events} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={props.bpm} phrases={solo.phrases} title={solo.title} summary={solo.summary} source={`Idea: ${ideaById(idea).name}`} />}
-      {tab === 'repite' && <SoloPlayer key={`r-${idea}-${seed}-${level}-${key}`} events={events} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={Math.min(props.bpm, 110)} phrases={solo.phrases} source={`Idea: ${ideaById(idea).name}`} guidedRepeat />}
-      {tab === 'transforma' && <Transformer events={events} solo={{ notes: solo.notes, phrases: solo.phrases }} keyRoot={keyRoot} blues={blues} style={props.style} bpm={props.bpm} source={`Idea: ${ideaById(idea).name}`} />}
-      {tab === 'turno' && <YourTurn {...props} events={events} keyRoot={keyRoot} idea={idea} />}
+      {tab === 'repite' && solo && <SoloPlayer key={`r-${playerKey}`} events={section} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={Math.min(bpm, 110)} phrases={solo.phrases} source={source} scales={chosen} guidedRepeat />}
+      {tab === 'transforma' && solo && <Transformer key={`t-${playerKey}`} events={section} solo={{ notes: solo.notes, phrases: solo.phrases }} keyRoot={keyRoot} blues={blues} style={props.style} bpm={bpm} source={source} />}
+      {tab === 'turno' && <YourTurn {...props} events={events} keyRoot={keyRoot} challenge={w.challenge} />}
       {tab === 'ia' && <AiPanel events={events} keyRoot={keyRoot} blues={blues} minor={minor} style={props.style} bpm={props.bpm} range={range} contextText={`${ctxText}\n${progressionText(events)}`} />}
     </div>
   );
@@ -186,10 +218,10 @@ function Transformer({ events, solo, keyRoot, blues, style, bpm, source }: { eve
 }
 
 // ---------------------------------------------------------------- Tu turno
-function YourTurn(props: WorkshopProps & { events: ChordEvent[]; keyRoot: Note; idea: IdeaId }) {
+function YourTurn(props: WorkshopProps & { events: ChordEvent[]; keyRoot: Note; challenge: string }) {
   const [left, setLeft] = useState((props.minutes ?? 4) * 60);
   const [running, setRunning] = useState(false);
-  const challenges = [ideaById(props.idea).constraint, ...(props.prompts ?? [])];
+  const challenges = [props.challenge, ...(props.prompts ?? [])];
   const [ci, setCi] = useState(0);
   useEffect(() => {
     if (!running) return;

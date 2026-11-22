@@ -102,7 +102,12 @@ export function nearestPc(pcs: number[], ref: number, lo: number, hi: number, di
     const d = Math.abs(m - ref);
     if (d < bd) { bd = d; best = m; }
   }
-  return bd === Infinity ? nearestPc(pcs, ref, lo, hi, 0, avoidSame) : best;
+  if (bd < Infinity) return best;
+  // sin candidatos: primero se relaja la dirección, luego «distinta de la actual» y por último el rango
+  if (dir !== 0) return nearestPc(pcs, ref, lo, hi, 0, avoidSame);
+  if (avoidSame) return nearestPc(pcs, ref, lo, hi, 0, false);
+  if (!pcs.length || hi - lo > 48) return ref;
+  return nearestPc(pcs, ref, lo - 12, hi + 12, 0, false);
 }
 export function step(m: number, pcs: number[], dir: number, lo: number, hi: number): number {
   for (let k = m + dir; k >= lo - 12 && k <= hi + 12; k += dir) if (pcs.includes(mod12(k))) return k;

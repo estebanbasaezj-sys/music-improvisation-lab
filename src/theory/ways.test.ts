@@ -91,4 +91,17 @@ describe('generador de solos por formas de tocar', () => {
     expect(a.notes).toEqual(b.notes);
     expect(new Set(a.parts!.map((x) => x.way)).size).toBeGreaterThan(1);
   });
+
+  it('la figura elegida (negra, corchea, semicorchea) cambia el ritmo de las formas de escala y arpegio', () => {
+    const p = progs.find((x) => x.id === 'iiVI')!;
+    for (const w of ['tonalidad', 'modos', 'arpegios', 'triesc', 'grupos'] as const) for (const figure of ['q', 'e', 's'] as const) {
+      const r = generateWay(w, { ...req(p, 'C', 3), figure })!;
+      expect(r.figureApplied, `${w} ${figure}`).toBe(true);
+      const unit = figure === 'q' ? 1 : figure === 'e' ? 0.5 : 0.25;
+      expect(r.notes.some((n) => Math.abs(n.dur - unit) < 1e-6), `${w} ${figure}`).toBe(true);
+      const T = r.notes.length && 16;
+      r.notes.forEach((n, i) => { expect(n.start + n.dur).toBeLessThanOrEqual(T + 1e-9); if (i) expect(n.start).toBeGreaterThanOrEqual(r.notes[i - 1].start + r.notes[i - 1].dur - 1e-9); });
+    }
+    expect(generateWay('motivo', { ...req(p, 'C', 3), figure: 's' })!.figureApplied).toBe(false);
+  });
 });

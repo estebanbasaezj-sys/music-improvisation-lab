@@ -412,6 +412,13 @@ export function swingBeat(b: number, ratio = 2 / 3): number {
   return b;
 }
 
+/** Tiempos (enteros) que contienen semicorcheas: allí no se aplica swing. */
+export function sixteenthBeats(starts: number[]): Set<number> {
+  const out = new Set<number>();
+  for (const b of starts) { const f = b - Math.floor(b + 1e-9); if (Math.abs(f - 0.25) < 1e-6 || Math.abs(f - 0.75) < 1e-6) out.add(Math.floor(b + 1e-9)); }
+  return out;
+}
+
 /** Reproduce una secuencia de notas fuera del transporte (escalas, arpegios, frases). */
 export async function playSequence(
   voice: Voice,
@@ -425,7 +432,8 @@ export async function playSequence(
   const spb = 60 / bpm;
   const t0 = Tone.now() + 0.08;
   const r = swingRatio(bpm);
-  const sw = (b: number) => (opts.swing ? swingBeat(b, r) : b);
+  const straight = sixteenthBeats(events.map((e) => e.start));
+  const sw = (b: number) => (opts.swing && !straight.has(Math.floor(b + 1e-9)) ? swingBeat(b, r) : b);
   let end = 0;
   events.forEach((e, idx) => {
     const start = sw(e.start);

@@ -2,6 +2,7 @@
 // versión y velocidad. Pensado para probar muchas maneras de tocar el mismo pasaje con pocos toques.
 import { ChordEvent } from '../theory/progressions';
 import { LEVELS, Level, Passage, WAYS, WAY_GROUPS, WayId, wayAvailable, wayById } from '../theory/ways';
+import { FIGURE_LABEL, Figure } from '../theory/cadence';
 
 export type Speed = 'lenta' | 'normal' | 'rapida';
 export const SPEED_FACTOR: Record<Speed, number> = { lenta: 0.75, normal: 1, rapida: 1.25 };
@@ -18,9 +19,13 @@ interface Props {
   onAnother: () => void;
   speed: Speed;
   onSpeed: (s: Speed) => void;
+  figure: Figure | 'auto';
+  onFigure: (f: Figure | 'auto') => void;
+  /** la forma actual usa la figura elegida (las formas de frase tienen su propio ritmo) */
+  figureApplies: boolean;
 }
 
-export function WayPicker({ events, passages, passage, onPassage, level, onLevel, way, onWay, onAnother, speed, onSpeed }: Props) {
+export function WayPicker({ events, passages, passage, onPassage, level, onLevel, way, onWay, onAnother, speed, onSpeed, figure, onFigure, figureApplies }: Props) {
   const avail = WAYS.filter((w) => wayAvailable(w.id, { events, level }).ok).map((w) => w.id);
   const idx = avail.indexOf(way);
   const go = (d: number) => onWay(avail[(Math.max(0, idx) + d + avail.length) % avail.length]);
@@ -45,6 +50,14 @@ export function WayPicker({ events, passages, passage, onPassage, level, onLevel
         </div>
       </div>
       <p className="small muted wp-level-text">{LEVELS[level - 1].text}</p>
+      <div className="wp-row">
+        <span className="wp-label">Figura</span>
+        <div className="segmented sm" role="radiogroup" aria-label="Figura rítmica">
+          <button className={figure === 'auto' ? 'on' : ''} onClick={() => onFigure('auto')}>Según el nivel</button>
+          {(['q', 'e', 's'] as Figure[]).map((f) => <button key={f} className={figure === f ? 'on' : ''} onClick={() => onFigure(f)}>{FIGURE_LABEL[f]}</button>)}
+        </div>
+        {figure !== 'auto' && !figureApplies && <span className="small muted">Esta forma tiene su propio ritmo: la figura se aplica a las formas de escala, arpegio y patrón.</span>}
+      </div>
       <div className="wp-ways">
         {WAY_GROUPS.map((g) => (
           <div key={g} className="wp-group">

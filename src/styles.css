@@ -1055,3 +1055,22 @@ a.yt-poster.ext { text-decoration: none; }
   .wp-nav .segmented { margin: 0; }
   .wp-levels { min-width: 0; }
 }
+.cx-ladder { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.cx-opts-row { margin: .2rem 0 .5rem; }
+.seg-label { font-size: .78rem; color: var(--muted); align-self: center; padding: 0 .3rem 0 .4rem; }
+.great { margin: .7rem 0; padding: .7rem .85rem; border: 1px solid var(--line); border-left: 3px solid var(--violet); border-radius: 10px; background: rgba(181,140,255,.06); }
+.great-head { font-size: 1.05rem; }
+.great h4 { margin: .5rem 0 .2rem; }
+.great ul { margin: .2rem 0; padding-left: 1.1rem; }
+.great-books .badge { font-size: .72rem; color: var(--accent2); font-weight: 650; }
+
+/* ---------- el lenguaje de los grandes ---------- */
+.greats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: .5rem; margin: .8rem 0; }
+.great-card { display: flex; flex-direction: column; align-items: flex-start; gap: .15rem; padding: .7rem .8rem; border-radius: 12px; border: 1.5px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; font: inherit; text-align: left; min-height: 44px; }
+.great-card small { color: var(--muted); font-size: .76rem; }
+.great-card.on { border-color: var(--violet); box-shadow: 0 0 0 2px rgba(181,140,255,.25); }
+.great-ico { font-size: 1.6rem; line-height: 1; }
+.greats-h { margin: 1rem 0 .4rem; }
+.res-card { border-top: 1px solid var(--line); padding: .8rem 0 .4rem; }
+.res-head { display: flex; justify-content: space-between; gap: .6rem; flex-wrap: wrap; align-items: flex-start; }
+.res-head p { margin: .1rem 0 .3rem; }

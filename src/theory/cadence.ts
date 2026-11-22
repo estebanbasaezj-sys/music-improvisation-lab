@@ -7,7 +7,7 @@ import { Chord, QUALITIES, chordNotes, chordSymbol } from './chords';
 import { ChordEvent, realize } from './progressions';
 import { IV, Note, pc, transposeNote } from './notes';
 import { MODE_ORDER, scaleById, scaleNotes } from './scales';
-import { LineNote, chordStarts } from './line';
+import { LineNote, chordStarts, spellApproach } from './line';
 import { fillPath, generateSolo, nearestPc, step } from './improv';
 
 // ---------------------------------------------------------------- cadencias
@@ -256,11 +256,13 @@ export function stackChord(ns: Note[]): Chord | null {
 }
 
 // ---------------------------------------------------------------- la escalera de ejercicios
-export type StepId = 'escala' | 'arpegios' | 'ideas' | 'bebop' | 'frases';
+export type StepId = 'escala' | 'arpegios' | 'ideas' | 'combina' | 'aprox' | 'bebop' | 'frases' | 'estilos';
 export const STEPS: { id: StepId; name: string; icon: string; goal: string }[] = [
   { id: 'escala', name: 'Recorre la escala', icon: '🪜', goal: 'Escucha cómo suena cada escala sobre su acorde y aprende a conectarlas sin cortar.' },
   { id: 'arpegios', name: 'Tríadas y arpegios', icon: '🔺', goal: 'Toca el acorde nota por nota: es el esqueleto de toda buena línea.' },
   { id: 'ideas', name: 'Ideas compuestas', icon: '🧩', goal: 'Patrones, notas guía y motivos: escalas y arpegios combinados con intención.' },
+  { id: 'combina', name: 'Sin cuadratura', icon: '🔀', goal: 'Tríadas combinadas con escalas, grupos de 3 y de 5 que cruzan la barra de compás y frases desplazadas: ideas menos previsibles.' },
+  { id: 'aprox', name: 'Aproximaciones', icon: '🎯', goal: 'Las aproximaciones típicas del jazz hacia la nota de llegada (elige 1, 3, 5 o 7) y la figura (negra, corchea o semicorchea).' },
   { id: 'bebop', name: 'Bebop', icon: '🎷', goal: 'Cromatismos que apuntan a las notas del acorde y corcheas que caen en su sitio.' },
   { id: 'frases', name: 'Frases clave', icon: '⭐', goal: 'Recursos con historia: así resolvían las cadencias los grandes. Frases originales construidas con esos recursos, no transcripciones.' },
 ];
@@ -277,7 +279,14 @@ export interface ExCtx {
   seed: number;
   names: ExNamer;
   scaleName: (p: ScalePick) => string;
+  /** aproximaciones: grado de llegada y figura de las notas de aproximación */
+  target?: '1' | '3' | '5' | '7';
+  figure?: Figure;
 }
+/** Figura rítmica de un ejercicio: negras, corcheas o semicorcheas. */
+export type Figure = 'q' | 'e' | 's';
+export const FIGURE_LABEL: Record<Figure, string> = { q: '♩ Negras', e: '♪ Corcheas', s: '♬ Semicorcheas' };
+const FIGURE_DUR: Record<Figure, number> = { q: 1, e: 0.5, s: 0.25 };
 export interface ExPhrase { start: number; end: number; title: string; text: string }
 export interface ExResult { notes: LineNote[]; phrases: ExPhrase[] }
 export interface ExerciseDef {
@@ -289,6 +298,8 @@ export interface ExerciseDef {
   origin?: string;
   /** por qué no aplica a una cadencia (si `build` devuelve null) */
   needs?: string;
+  /** la figura (negra, corchea, semicorchea) se puede cambiar estirando o comprimiendo el ejercicio */
+  scalable?: boolean;
   build: (ctx: ExCtx) => ExResult | null;
 }
 
@@ -467,7 +478,7 @@ function exArp(ctx: ExCtx, kind: 'triada' | 'septima' | 'superior'): ExResult {
     for (let j = 1; j < 4; j++) up.push(nearestPc([pcs[j]], up[j - 1] + 1, up[j - 1] + 1, up[j - 1] + 12, 1));
     const top = kind === 'septima' && hasSeventh ? up[0] + 12 : null;
     const upFull = top ? [...up, top] : up;
-    const quarters = kind === 'triada' && s.beats >= 4;
+    const quarters = kind === 'triada' && s.beats >= 4 && !ctx.figure; // sin figura elegida: tríadas en negras
     let line: number[];
     if (quarters) line = dir === 1 ? up : [...up].reverse();
     else line = cycle(upFull, s.beats * 2, dir);
@@ -813,33 +824,161 @@ function exBlues(ctx: ExCtx): ExResult | null {
   return { notes: finalize(notes, ctx), phrases: phrasesFrom(ctx, segs, texts, FILL_TEXT) };
 }
 
+// ---- sin cuadratura: tríadas + escalas, grupos de 3 y 5, desplazamiento
+/** Recorre la escala del acorde por «celdas» (en grados de la escala) que avanzan un grado cada vez. */
+function exCells(ctx: ExCtx, cell: number[], label: string, explain: (c: string) => string): ExResult {
+  const segs = segsOf(ctx);
+  const notes: LineNote[] = [];
+  const texts: string[] = [];
+  let k = 0; // la celda sigue a través de los cambios de acorde (por eso cruza la barra de compás)
+  segs.forEach((s) => {
+    const base = rootPlace(s.chord, ctx, center(ctx) - 7);
+    const lad = scaleRun(base, s.pcs, s.pcs.length * 3, 1);
+    const slots = s.beats * 2;
+    const line: number[] = [];
+    for (let j = 0; j < slots; j++, k++) {
+      const grp = Math.floor(k / cell.length) % Math.max(1, s.pcs.length);
+      line.push(lad[Math.min(lad.length - 1, grp + cell[k % cell.length])]);
+    }
+    if (s.last) {
+      const n = Math.max(1, slots - 2);
+      notes.push(...eighths(line.slice(0, n), s.start, 'celda'));
+      notes.push({ midi: base, start: s.start + n * 0.5, dur: s.beats - n * 0.5, tech: 'celda' });
+    } else notes.push(...eighths(line, s.start, 'celda'));
+    texts.push(`${sym(ctx, s.chord)}: ${label} con ${ctx.scaleName(s.pick)} (${line.slice(0, 6).map((m) => nm(ctx, m, s.chord, s.pick)).join(' ')}…).`);
+  });
+  texts[0] = `${texts[0]} ${explain(label)}`;
+  return { notes: finalize(notes, ctx), phrases: phrasesFrom(ctx, segs, texts) };
+}
+function exTriadScale(ctx: ExCtx, order: 'tri-esc' | 'esc-tri'): ExResult {
+  const segs = segsOf(ctx);
+  const notes: LineNote[] = [];
+  const texts: string[] = [];
+  segs.forEach((s) => {
+    const c = s.chord;
+    const base = rootPlace(c, ctx, center(ctx) - 5);
+    const up = [base, nearestPc([degPc(c, '3')], base + 2, base + 2, base + 5, 1), nearestPc([degPc(c, '5')], base + 6, base + 6, base + 8, 1), base + 12];
+    let line: number[];
+    if (order === 'tri-esc') line = [...up, ...scaleRun(base + 12, s.pcs, 5, -1).slice(1)]; // 1-3-5-8 y bajando por la escala
+    else line = [...scaleRun(base, s.pcs, 5, 1), up[1], base, nearestPc([degPc(c, '7')], base - 1, base - 3, base - 1, -1)]; // subiendo por la escala y bajando por la tríada
+    const n = s.beats * 2;
+    line = Array.from({ length: n }, (_, j) => line[j % line.length]);
+    if (s.last) {
+      notes.push(...eighths(line.slice(0, Math.max(1, n - 2)), s.start, 'combinada'));
+      notes.push({ midi: base, start: s.start + Math.max(1, n - 2) * 0.5, dur: s.beats - Math.max(1, n - 2) * 0.5, tech: 'combinada' });
+    } else notes.push(...eighths(line, s.start, 'combinada'));
+    texts.push(order === 'tri-esc'
+      ? `${sym(ctx, c)}: tríada arriba (${up.map((m) => nm(ctx, m, c)).join(' ')}) y escala abajo con ${ctx.scaleName(s.pick)}.`
+      : `${sym(ctx, c)}: escala arriba con ${ctx.scaleName(s.pick)} y tríada abajo hasta la 7ª de abajo, que lleva al acorde siguiente.`);
+  });
+  return { notes: finalize(notes, ctx), phrases: phrasesFrom(ctx, segs, texts) };
+}
+function exDisplaced(ctx: ExCtx): ExResult {
+  const base = exTriadScale(ctx, 'tri-esc');
+  const segs = segsOf(ctx);
+  const notes: LineNote[] = [];
+  const texts: string[] = [];
+  segs.forEach((s, k) => {
+    const off = k % 2 === 0 ? 0.5 : 1;
+    const inSeg = base.notes.filter((n) => n.start >= s.start - 1e-9 && n.start < s.end - 1e-9);
+    inSeg.forEach((n) => { if (n.start + off < s.end - 1e-9) notes.push({ ...n, start: n.start + off, dur: Math.min(n.dur, s.end - n.start - off), tech: 'desplazada' }); });
+    texts.push(`${sym(ctx, s.chord)}: la misma idea, empezando ${off === 0.5 ? 'en el «y» del 1' : 'en el tiempo 2'}. Mismas notas, otro acento.`);
+  });
+  return { notes: finalize(notes, ctx), phrases: phrasesFrom(ctx, segs, texts) };
+}
+
+// ---- aproximaciones típicas del jazz
+export type ApproachKind = 'cr-abajo' | 'dia-arriba' | 'encl-ab' | 'encl-ba' | 'doble-abajo' | 'doble-arriba' | 'encl-crom' | 'encl-3';
+const APPROACH_TECH: Record<ApproachKind, string> = { 'cr-abajo': 'below', 'dia-arriba': 'above', 'encl-ab': 'enclosure', 'encl-ba': 'enclosure', 'doble-abajo': 'double', 'doble-arriba': 'double', 'encl-crom': 'enclosure', 'encl-3': 'enclosure' };
+function approachFor(kind: ApproachKind, t: number, above: number): number[] {
+  switch (kind) {
+    case 'cr-abajo': return [t - 1];
+    case 'dia-arriba': return [above];
+    case 'encl-ab': return [above, t - 1];
+    case 'encl-ba': return [t - 1, above];
+    case 'doble-abajo': return [t - 2, t - 1];
+    case 'doble-arriba': return [t + 2, t + 1];
+    case 'encl-crom': return [t + 1, t - 1];
+    case 'encl-3': return above - t > 1 ? [above, t + 1, t - 1] : [t + 2, above, t - 1];
+  }
+}
+const DEG_NAME: Record<string, string> = { '1': 'fundamental', '3': '3ª', '5': '5ª', '7': '7ª' };
+function exApproach(ctx: ExCtx, kind: ApproachKind): ExResult {
+  const all = segsOf(ctx);
+  const segs = all.filter((s) => !s.same);
+  const T = total(ctx);
+  const d = FIGURE_DUR[ctx.figure ?? 'e'];
+  const deg = ctx.target ?? '3';
+  const { lo, hi } = ctx.range;
+  const notes: LineNote[] = [];
+  const texts: string[] = [];
+  let ref = center(ctx);
+  const plan = segs.map((s) => {
+    const t = nearestPc([degPc(s.chord, deg)], ref, lo + 3, hi - 3);
+    ref = t;
+    const above = step(t, s.pcs, 1, lo - 12, hi + 12);
+    return { s, t, appr: approachFor(kind, t, above), above };
+  });
+  plan.forEach((p, k) => {
+    const span = p.appr.length * d;
+    let at = p.s.start - span;
+    if (at < 0) at += T; // la primera llegada se prepara al final de la vuelta (la base se repite)
+    p.appr.forEach((m, j) => notes.push({ midi: m, start: at + j * d, dur: d, tech: APPROACH_TECH[kind] }));
+    const nx = plan[k + 1];
+    const nextAppr = nx ? nx.s.start - nx.appr.length * d : T - plan[0].appr.length * d;
+    notes.push({ midi: p.t, start: p.s.start, dur: Math.max(d, Math.min(2, nextAppr - p.s.start)), tech: 'objetivo' });
+    const names = p.appr.map((m) => ctx.names.note(spellApproach(m, p.t))).join(' – ');
+    texts[all.indexOf(p.s)] = `${sym(ctx, p.s.chord)}: llegas a ${nm(ctx, p.t, p.s.chord)} (${DEG_NAME[deg]}) desde ${names}.`;
+  });
+  return { notes: finalize(notes, ctx), phrases: phrasesFrom(ctx, all, all.map((_, i) => texts[i] ?? '')) };
+}
+/** Construye un ejercicio con la figura pedida: si es escalable, se comprime o estira la progresión. */
+export function buildExercise(ex: ExerciseDef, ctx: ExCtx): ExResult | null {
+  const fig = ctx.figure;
+  if (!ex.scalable || !fig || fig === 'e') return ex.build(ctx);
+  const k = fig === 'q' ? 2 : 0.5;
+  const ev = ctx.events.map((e) => ({ ...e, beats: e.beats / k }));
+  const r = ex.build({ ...ctx, events: ev });
+  if (!r) return null;
+  const T = total(ctx);
+  return {
+    notes: r.notes.map((n) => ({ ...n, start: n.start * k, dur: n.dur * k })).filter((n) => n.dur > 1e-6 && n.start < T - 1e-9),
+    phrases: r.phrases.map((p) => {
+      const start = p.start * k; const end = p.end * k;
+      const a = Math.floor(start / 4 + 1e-9) + 1; const b = Math.max(a, Math.ceil(end / 4 - 1e-9));
+      const label = a === b ? `Compás ${a}` : `Compases ${a}–${b}`;
+      return { ...p, start, end, title: p.title.replace(/^Compases [\d.]+–[\d.]+/, label).replace(/^Compás [\d.]+/, label) };
+    }),
+  };
+}
+
 export const EXERCISES: ExerciseDef[] = [
-  { id: 'esc-fund', step: 'escala', name: 'Sube desde la fundamental',
+  { id: 'esc-fund', scalable: true, step: 'escala', name: 'Sube desde la fundamental',
     how: 'Cada acorde con su escala, desde la fundamental en corcheas. Escucha cómo cambia el color en cada cambio.',
     challenge: 'Toca lo mismo sin mirar la partitura. Luego bájala desde la octava.', build: (c) => exScaleFrom(c, '1') },
-  { id: 'esc-3', step: 'escala', name: 'Empieza en la 3ª',
+  { id: 'esc-3', scalable: true, step: 'escala', name: 'Empieza en la 3ª',
     how: 'La misma escala, pero desde la 3ª del acorde: la nota que define si es mayor o menor. Suena más a melodía y menos a ejercicio.',
     challenge: 'Empieza cada acorde en su 3ª y sube 8 notas. Después prueba desde la 5ª y la 7ª.', build: (c) => exScaleFrom(c, '3') },
-  { id: 'esc-cont', step: 'escala', name: 'Sin cortar: conecta las escalas',
+  { id: 'esc-cont', scalable: true, step: 'escala', name: 'Sin cortar: conecta las escalas',
     how: 'La línea no vuelve a la fundamental en cada acorde: sigue en la misma dirección y solo cambian las notas que cambian de escala. Así se toca de verdad.',
     challenge: 'Corcheas continuas toda la cadencia. Al cambiar de acorde, sigue desde la nota en la que estás.', build: exScaleConnected },
-  { id: 'arp-triada', step: 'arpegios', name: 'Tríadas 1-3-5-8',
+  { id: 'arp-triada', scalable: true, step: 'arpegios', name: 'Tríadas 1-3-5-8',
     how: 'Solo las tres notas del acorde (y la octava), en negras. Es lo primero que hay que tener en los dedos.',
     challenge: 'Toca la tríada de cada acorde subiendo y bajando, a tempo lento, sin pararte en los cambios.', build: (c) => exArp(c, 'triada') },
-  { id: 'arp-7', step: 'arpegios', name: 'Arpegios de séptima 1-3-5-7',
+  { id: 'arp-7', scalable: true, step: 'arpegios', name: 'Arpegios de séptima 1-3-5-7',
     how: 'Las cuatro notas del acorde: la 7ª es la que da el color de jazz.',
     challenge: 'Arpegio de cada acorde subiendo y bajando. Luego empieza desde la 7ª hacia abajo.', build: (c) => exArp(c, 'septima') },
-  { id: 'arp-cerca', step: 'arpegios', name: 'Arpegios que se conectan',
+  { id: 'arp-cerca', scalable: true, step: 'arpegios', name: 'Arpegios que se conectan',
     how: 'Cada arpegio empieza en la nota del acorde más cercana a la última que tocaste: menos saltos, más línea.',
     challenge: 'En cada cambio, busca la nota del acorde nuevo que esté a un paso de donde quedaste.', build: exArpConnected },
-  { id: 'arp-sup', step: 'arpegios', name: 'Desde la 3ª: 3-5-7-9',
+  { id: 'arp-sup', scalable: true, step: 'arpegios', name: 'Desde la 3ª: 3-5-7-9',
     how: 'Empezar el arpegio en la 3ª evita la fundamental (la toca el bajo) y añade la 9ª: es otro acorde completo «dentro» del acorde.',
     challenge: 'Toca 3-5-7-9 de cada acorde y descubre qué acorde superior forma.', origin: 'Recurso habitual del lenguaje jazzístico desde el bebop: pensar en «acordes superiores» para sonar moderno sin salir de la armonía.', build: (c) => exArp(c, 'superior') },
-  { id: 'ide-1235', step: 'ideas', name: 'Patrón 1-2-3-5',
+  { id: 'ide-1235', scalable: true, step: 'ideas', name: 'Patrón 1-2-3-5',
     how: 'Un patrón de cuatro notas (fundamental, 2ª, 3ª y 5ª) que se traslada a cada acorde, de ida y de vuelta.',
     challenge: 'Toca 1-2-3-5 en cada acorde de memoria. Luego inviértelo (5-3-2-1) y empieza en otro tiempo.',
     origin: 'Los «patrones digitales» como 1-2-3-5 se asocian sobre todo a John Coltrane (son muy audibles en «Giant Steps»); métodos como los de Jerry Coker y Jerry Bergonzi los sistematizaron.', build: exDigital },
-  { id: 'ide-terceras', step: 'ideas', name: 'La escala en terceras',
+  { id: 'ide-terceras', scalable: true, step: 'ideas', name: 'La escala en terceras',
     how: 'Recorre la escala saltando de a terceras (1-3, 2-4, 3-5…): suena a línea y entrena los arpegios a la vez.',
     challenge: 'Escala en terceras subiendo en un acorde y bajando en el siguiente.', build: exThirds },
   { id: 'ide-guia', step: 'ideas', name: 'Notas guía (3ª y 7ª)',
@@ -848,13 +987,39 @@ export const EXERCISES: ExerciseDef[] = [
   { id: 'ide-motivo', step: 'ideas', name: 'Un motivo que viaja',
     how: 'Una idea corta de 3–4 notas que se repite adaptada a cada acorde, se desplaza y se extiende: así un solo «cuenta una historia».',
     challenge: 'Inventa tu propio motivo de 3 notas y llévalo por toda la cadencia sin cambiar el ritmo.', build: (c) => fromSolo(c, 'motif', 2) },
+  { id: 'com-tri-esc', step: 'combina', scalable: true, name: 'Tríada arriba, escala abajo',
+    how: 'Subes por las notas del acorde (1-3-5-8) y bajas por la escala: combinar arpegio y escala hace que la línea suene a melodía.',
+    challenge: 'Haz lo mismo empezando desde la 3ª del acorde. Luego al revés: escala arriba, tríada abajo.', build: (c) => exTriadScale(c, 'tri-esc') },
+  { id: 'com-esc-tri', step: 'combina', scalable: true, name: 'Escala arriba, tríada abajo',
+    how: 'Subes por la escala y bajas por la tríada hasta la 7ª de abajo, que empuja hacia el acorde siguiente.',
+    challenge: 'Combina las dos versiones: un acorde con tríada-escala y el siguiente con escala-tríada.', build: (c) => exTriadScale(c, 'esc-tri') },
+  { id: 'com-3', step: 'combina', scalable: true, name: 'Grupos de 3 (3 contra 4)',
+    how: 'Tríadas de la escala en secuencia (1-3-5, 2-4-6, 3-5-7…) tocadas en grupos de 3 corcheas sobre un compás de 4: el acento cae cada vez en otro lugar y la frase deja de sonar cuadrada.',
+    challenge: 'Acentúa la primera nota de cada grupo de 3 y escucha cómo se desplaza respecto del pulso.',
+    origin: 'Los grupos de 3 sobre 4/4 (polirritmia, «hemiola») son un recurso clásico para romper la cuadratura del fraseo.',
+    build: (c) => exCells(c, [0, 2, 4], 'grupos de 3 (tríadas de la escala)', () => 'Cada grupo de 3 empieza un grado más arriba y cruza los tiempos y la barra de compás.') },
+  { id: 'com-5', step: 'combina', scalable: true, name: 'Grupos de 5 (tríada + escala)',
+    how: 'Celdas de 5 notas que suben por la tríada y bajan por la escala (1-3-5-4-2, 2-4-6-5-3…): 5 contra 4, todavía menos previsible.',
+    challenge: 'Toca las celdas de 5 contando 4 por compás: cada celda empieza en un lugar distinto del compás.',
+    build: (c) => exCells(c, [0, 2, 4, 3, 1], 'grupos de 5 (tríada + escala)', () => 'Las celdas de 5 empiezan cada vez en otro tiempo: así se rompe la cuadratura.') },
+  { id: 'com-desp', step: 'combina', name: 'La misma idea, desplazada',
+    how: 'Una frase de tríada + escala que empieza en el «y» del 1 en un acorde y en el tiempo 2 en el siguiente: mismas notas, otro acento.',
+    challenge: 'Toca cualquier idea tuya empezando en el «y» del 1, luego en el 2 y luego en el «y» del 2.', build: exDisplaced },
+  { id: 'apr-cr-abajo', step: 'aprox', name: 'Cromática desde abajo', how: 'Medio tono por debajo de la nota de llegada. La más usada en jazz.', challenge: 'Llega a la nota elegida de cada acorde desde medio tono abajo, en negras, corcheas y semicorcheas.', build: (c) => exApproach(c, 'cr-abajo') },
+  { id: 'apr-dia-arriba', step: 'aprox', name: 'Diatónica desde arriba', how: 'La nota de la escala justo encima de la nota de llegada.', challenge: 'Llega desde arriba por la escala; luego alterna: un acorde desde abajo y el siguiente desde arriba.', build: (c) => exApproach(c, 'dia-arriba') },
+  { id: 'apr-encl-ab', step: 'aprox', name: 'Enclosure: arriba y abajo', how: 'Nota de la escala por arriba, medio tono por abajo y llegada: la «rodeas».', challenge: 'Rodea la nota de llegada de cada acorde con arriba-abajo.', origin: 'Sello del bebop (Charlie Parker, Dizzy Gillespie).', build: (c) => exApproach(c, 'encl-ab') },
+  { id: 'apr-encl-ba', step: 'aprox', name: 'Enclosure: abajo y arriba', how: 'Primero medio tono abajo y luego la nota de la escala por arriba antes de llegar.', challenge: 'Alterna arriba-abajo y abajo-arriba en acordes seguidos.', build: (c) => exApproach(c, 'encl-ba') },
+  { id: 'apr-doble-abajo', step: 'aprox', name: 'Doble cromática desde abajo', how: 'Dos notas cromáticas subiendo hacia la nota de llegada.', challenge: 'Llega con dos cromatismos desde abajo; después prueba desde arriba.', build: (c) => exApproach(c, 'doble-abajo') },
+  { id: 'apr-doble-arriba', step: 'aprox', name: 'Doble cromática desde arriba', how: 'Dos notas cromáticas bajando hacia la nota de llegada.', challenge: 'Combina: un acorde con doble cromática desde abajo y el siguiente desde arriba.', build: (c) => exApproach(c, 'doble-arriba') },
+  { id: 'apr-encl-crom', step: 'aprox', name: 'Enclosure cromático', how: 'Medio tono arriba y medio tono abajo de la nota de llegada.', challenge: 'Rodea la nota con medio tono arriba y abajo; luego cambia el orden.', build: (c) => exApproach(c, 'encl-crom') },
+  { id: 'apr-encl-3', step: 'aprox', name: 'Enclosure de 3 notas', how: 'Escala arriba, medio tono arriba y medio tono abajo antes de llegar: el enclosure largo del bebop.', challenge: 'Úsalo para llegar a la 3ª del acorde en el tiempo 1, a tempo lento y luego más rápido.', build: (c) => exApproach(c, 'encl-3') },
   { id: 'beb-aprox', step: 'bebop', name: 'Llegar a la 3ª desde medio tono abajo',
     how: 'Corcheas de la escala y, justo antes de cada cambio, la nota a medio tono bajo la 3ª del acorde nuevo. La 3ª cae en el tiempo 1.',
     challenge: 'Elige la 3ª de cada acorde como meta y llega a ella desde medio tono abajo, siempre en el tiempo 1.', origin: 'Las aproximaciones cromáticas a notas del acorde son la base del bebop (Charlie Parker, Dizzy Gillespie).', build: (c) => exTargets(c, 'below') },
   { id: 'beb-encl', step: 'bebop', name: 'Enclosure: rodea la nota',
     how: 'Antes de la nota objetivo, una nota de la escala por arriba y otra medio tono por abajo: la «encierras». Es el sonido bebop por excelencia.',
     challenge: 'Rodea la 3ª de cada acorde (arriba-abajo-objetivo). Después prueba abajo-arriba-objetivo.', origin: 'Los enclosures (o «rodeos») son un sello del vocabulario de Charlie Parker y del bebop en general.', build: (c) => exTargets(c, 'enclosure') },
-  { id: 'beb-escala', step: 'bebop', name: 'Escala bebop',
+  { id: 'beb-escala', scalable: true, step: 'bebop', name: 'Escala bebop',
     how: 'Escala con una nota de paso cromática añadida: bajando en corcheas desde una nota del acorde, las notas del acorde caen en los tiempos.',
     challenge: 'Baja la escala bebop desde la 3ª, la 5ª y la 7ª de cada acorde. Fíjate en qué cae en cada tiempo.', origin: 'La «escala bebop» sistematiza lo que hacían los músicos del bebop; la enseñaron sobre todo David Baker y Barry Harris.', build: exBebopScale },
   { id: 'beb-linea', step: 'bebop', name: 'Línea bebop completa',

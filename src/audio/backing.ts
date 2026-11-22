@@ -5,7 +5,7 @@ import { Chord, chordNotes, voicing } from '../theory/chords';
 import { ChordEvent } from '../theory/progressions';
 import { IV, midi, pc, transposeNote } from '../theory/notes';
 import { rng } from './rng';
-import { DrumHit, Tone, Voice, click, endActivity, ensureAudio, getMix, registerActivity, setActivityLabel, swingBeat, swingRatio, triggerDrum, triggerNotes } from './engine';
+import { DrumHit, Tone, Voice, click, endActivity, ensureAudio, getMix, registerActivity, setActivityLabel, sixteenthBeats, swingBeat, swingRatio, triggerDrum, triggerNotes } from './engine';
 
 export type BackingStyle = 'swing' | 'blues' | 'ballad' | 'bossa' | 'funk';
 export type CompInstrument = 'piano' | 'rhodes';
@@ -286,9 +286,12 @@ export class BackingPlayer {
     const swung = isSwung(this.opts.style);
     const ratio = swingRatio(this.opts.bpm);
     const tick = (beat: number) => `${Math.round((swung ? swingBeat(beat, ratio) : beat) * PPQ)}i`;
+    // los tiempos de la melodía con semicorcheas se tocan rectos (el swing solo afecta a corcheas)
+    const straight = sixteenthBeats(melody.map((m) => m.beat));
+    const tickMel = (beat: number) => (straight.has(Math.floor(beat + 1e-9)) ? `${Math.round(beat * PPQ)}i` : tick(beat));
     type Ev = { time: string; n?: BackingNote; chordIdx?: number; beat?: number; jitter: number };
     const human = this.opts.humanize !== false;
-    const events: Ev[] = notes.map((n) => ({ time: tick(n.beat), n, jitter: human && n.part !== 'melody' ? (Math.random() - 0.5) * 0.012 : 0 }));
+    const events: Ev[] = notes.map((n) => ({ time: n.part === 'melody' ? tickMel(n.beat) : tick(n.beat), n, jitter: human && n.part !== 'melody' ? (Math.random() - 0.5) * 0.012 : 0 }));
     let acc = 0;
     evts.forEach((e, i) => { events.push({ time: tick(acc), chordIdx: i, jitter: 0 }); acc += e.beats; });
     for (let b = 0; b < total; b++) events.push({ time: tick(b), beat: b, jitter: 0 });

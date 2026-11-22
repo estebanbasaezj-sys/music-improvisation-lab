@@ -131,3 +131,51 @@ describe('explorador de cadencias', () => {
     }
   });
 });
+
+describe('figuras, aproximaciones e ideas sin cuadratura', () => {
+  it('todas las figuras (negra, corchea, semicorchea) y notas de llegada generan líneas válidas', async () => {
+    const { buildExercise } = await import('./cadence');
+    for (const cad of CADENCES) for (const fig of ['q', 'e', 's'] as const) for (const target of ['1', '3', '5', '7'] as const) {
+      const base = ctxFor(cad.id, cad.defaultKey, 'rec');
+      const ctx = { ...base, figure: fig, target };
+      const T = ctx.events.reduce((s, e) => s + e.beats, 0);
+      for (const ex of EXERCISES) {
+        if (target !== '3' && ex.step !== 'aprox') continue;
+        const r = buildExercise(ex, ctx);
+        const tag = `${cad.id} ${fig} ${target} ${ex.id}`;
+        if (!r) { expect(ex.needs, tag).toBeTruthy(); continue; }
+        expect(r.notes.length, tag).toBeGreaterThan(1);
+        r.notes.forEach((n, i) => {
+          expect(n.dur, tag).toBeGreaterThan(0);
+          expect(n.start + n.dur, tag).toBeLessThanOrEqual(T + 1e-9);
+          expect(n.midi, tag).toBeGreaterThanOrEqual(ctx.range.lo);
+          expect(n.midi, tag).toBeLessThanOrEqual(ctx.range.hi);
+          if (i) expect(n.start, tag).toBeGreaterThanOrEqual(r.notes[i - 1].start + r.notes[i - 1].dur - 1e-9);
+        });
+        if (ex.scalable && fig === 's') expect(r.notes.some((n) => Math.abs(n.dur - 0.25) < 1e-6), tag).toBe(true);
+        if (ex.scalable && fig === 'q') expect(r.notes.every((n) => n.dur >= 1 - 1e-6), tag).toBe(true);
+      }
+    }
+  });
+
+  it('aproximación cromática desde abajo: la nota anterior a cada llegada está medio tono abajo', async () => {
+    const { buildExercise } = await import('./cadence');
+    const ex = EXERCISES.find((e) => e.id === 'apr-cr-abajo')!;
+    for (const fig of ['q', 'e', 's'] as const) for (const target of ['1', '3', '5', '7'] as const) {
+      const ctx = { ...ctxFor('iiVI', 'F', 'rec'), figure: fig, target };
+      const r = buildExercise(ex, ctx)!;
+      for (const b of [4, 8]) {
+        const land = r.notes.find((n) => Math.abs(n.start - b) < 1e-6)!;
+        const prev = r.notes.filter((n) => n.start < b - 1e-9).pop()!;
+        expect(land.midi - prev.midi, `${fig} ${target} ${b}`).toBe(1);
+        expect(prev.dur, `${fig}`).toBeCloseTo(fig === 'q' ? 1 : fig === 'e' ? 0.5 : 0.25);
+      }
+    }
+  });
+
+  it('grupos de 3: la celda cruza los tiempos (no empieza siempre en el tiempo)', () => {
+    const ex = EXERCISES.find((e) => e.id === 'com-3')!;
+    const r = ex.build(ctxFor('iiVI', 'C', 'rec'))!;
+    expect(r.notes.length).toBeGreaterThan(12);
+  });
+});

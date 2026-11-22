@@ -8,6 +8,8 @@ import { ScalePick, modeOver, pickNotes, pickPcs } from '../theory/cadence';
 import { scaleById } from '../theory/scales';
 import { trackFeature } from '../telemetry/telemetry';
 import { WayPicker, SPEED_FACTOR, Speed } from './WayPicker';
+import { GreatPanel } from './GreatPanel';
+import type { Figure } from '../theory/cadence';
 import { ChordEvent, progressionById, realize } from '../theory/progressions';
 import { Note, noteName, parseNote } from '../theory/notes';
 import { ChosenScale, LineNote, analyzeLine } from '../theory/line';
@@ -68,14 +70,15 @@ export function Workshop(props: WorkshopProps) {
   const [way, setWay] = useState<WayId>(firstWay);
   const [seed, setSeed] = useState(1);
   const [speed, setSpeed] = useState<Speed>('normal');
+  const [figure, setFigure] = useState<Figure | 'auto'>('auto');
   const [tab, setTab] = useState<Tab>('ideas');
   const range = soloRange(t.instrument, app.settings.saxType);
   // si la forma elegida no está disponible en este nivel o pasaje, se usa la primera disponible
   const activeWay: WayId = wayAvailable(way, { events: section, level }).ok ? way : (WAYS.find((w) => wayAvailable(w.id, { events: section, level }).ok)?.id ?? 'modos');
   const scaleName = (p: ScalePick) => `${t.noteName(p.root)} ${scaleById(p.scale).name.toLowerCase()}`;
-  const solo = useMemo(() => generateWay(activeWay, { events: section, keyRoot, minor, blues, range, level, seed, names: exNames, scaleName }), [activeWay, section, key, minor, blues, range.lo, range.hi, level, seed, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  const solo = useMemo(() => generateWay(activeWay, { events: section, keyRoot, minor, blues, range, level, seed, names: exNames, scaleName, figure: figure === 'auto' ? undefined : figure }), [activeWay, section, key, minor, blues, range.lo, range.hi, level, seed, figure, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
   const chosen = useMemo<(ChosenScale | undefined)[] | undefined>(() => solo?.picks?.map((p) => ({ pcs: pickPcs(p), notes: pickNotes(p), name: scaleName(p) })), [solo]); // eslint-disable-line react-hooks/exhaustive-deps
-  const bpm = Math.round(LEVELS[level - 1].bpm * SPEED_FACTOR[speed]);
+  const bpm = Math.round((figure === 's' && solo?.figureApplied ? 70 : LEVELS[level - 1].bpm) * SPEED_FACTOR[speed]);
   const w = wayById(activeWay);
   useEffect(() => { trackFeature('generador-solos', { forma: activeWay, nivel: level }); }, [activeWay, level]);
   const ctxText = `${prog ? prog.name : props.title ?? 'Progresión'} en ${names(keyRoot)}${minor ? ' menor' : ''} (concierto)`;
@@ -96,7 +99,7 @@ export function Workshop(props: WorkshopProps) {
     });
     return [...seen.entries()];
   }, [solo, section]); // eslint-disable-line react-hooks/exhaustive-deps
-  const playerKey = `${activeWay}-${seed}-${level}-${key}-${passage.id}-${speed}`;
+  const playerKey = `${activeWay}-${seed}-${level}-${key}-${passage.id}-${speed}-${figure}`;
   const source = `${w.name} · nivel ${level}`;
 
   return (
@@ -115,7 +118,8 @@ export function Workshop(props: WorkshopProps) {
       ]} />
       {(tab === 'ideas' || tab === 'repite' || tab === 'transforma') && (
         <WayPicker events={section} passages={passages} passage={passage.id} onPassage={(id) => { setPassageId(id); setSeed(1); }} level={level} onLevel={(l) => { setLevel(l); setSeed(1); }}
-          way={activeWay} onWay={(id) => { setWay(id); setSeed(1); }} onAnother={() => setSeed(seed + 1)} speed={speed} onSpeed={setSpeed} />
+          way={activeWay} onWay={(id) => { setWay(id); setSeed(1); }} onAnother={() => setSeed(seed + 1)} speed={speed} onSpeed={setSpeed}
+          figure={figure} onFigure={setFigure} figureApplies={!!solo?.figureApplied} />
       )}
       {(tab === 'ideas' || tab === 'repite' || tab === 'transforma') && !solo && <p className="warn">Esta forma no genera notas en este pasaje. Prueba otra forma u otro pasaje.</p>}
       {tab === 'ideas' && solo && (
@@ -124,6 +128,7 @@ export function Workshop(props: WorkshopProps) {
             <div className="wp-scales small"><span className="muted">Qué escala suena en cada acorde:</span> {scaleChips.map(([c, s]) => <span key={c} className="pill"><b>{c}</b> → {s}</span>)}</div>
           )}
           <SoloPlayer key={playerKey} events={section} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={bpm} phrases={solo.phrases} title={solo.title} summary={solo.summary} source={source} scales={chosen} />
+          {w.great && <GreatPanel id={w.great} />}
           <div className="cx-challenge"><b>🎯 Ahora tú:</b> {w.challenge} <span className="muted small">Pulsa «▶ Base (tocas tú)» y toca con esta forma; luego pasa a la siguiente con «Siguiente ▶».</span></div>
         </>
       )}

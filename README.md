@@ -107,6 +107,37 @@ La primera pestaña del Laboratorio guía en tres pasos:
 
 Cada idea se genera para la cadencia, la tonalidad, las escalas elegidas y el registro del instrumento; se ve en partitura con la función de cada nota, suena con acompañamiento, se repite frase a frase y tiene un reto. «¡Lo probé!» suma XP y cuenta para la racha. Las «frases clave» indican de dónde viene cada recurso; son frases originales construidas con ese recurso, no transcripciones. Código: `src/theory/cadence.ts` (pruebas en `cadence.test.ts`) y `src/components/CadenceExplorer.tsx`.
 
+## Generador de solos: formas de tocar × niveles 1–5 (Taller)
+
+En «Escucha ideas» del Taller (y en canciones, lecciones y transcripciones que lo usan):
+
+- **Pasaje:** toda la progresión, bloques de 4 compases o cada ii–V(–I) detectado (se repite en bucle con la base).
+- **Nivel 1–5:** blancas con notas seguras → negras → corcheas con respiraciones → líneas con aproximación cromática a cada acorde → líneas con enclosures.
+- **Figura:** según el nivel, o negras, corcheas o semicorcheas (los tiempos con semicorcheas suenan rectos aunque la base vaya en swing).
+- **Formas de tocar:**
+  - *Escalas:* una escala para todo, modos, pentatónicas, escala blues, por terceras.
+  - *Acordes:* arpegios, tríadas + escalas, patrón 1-2-3-5, notas guía.
+  - *Frases:* motivo, pregunta y respuesta, ritmo y espacio, grupos de 3 y 5, desplazamiento.
+  - *Jazz:* aproximaciones, enclosures, bebop, sustituto tritonal, b9.
+  - *Estilos:* Parker, Coltrane, Miles, Lester Young, Rollins, Cannonball, B.B. King.
+  - *Mezcla* de formas.
+- **Controles:** ◀ ▶ recorre las formas sobre el mismo pasaje, 🎲 da otra versión y hay velocidad lenta, normal o rápida. Muestra la escala de cada acorde (con el modo que forma) y un reto.
+
+Código: `src/theory/ways.ts` (pruebas en `ways.test.ts`) y `src/components/WayPicker.tsx`.
+
+## El lenguaje de los grandes
+
+Sección `#/grandes`:
+
+- **Ficha de cada músico:** Charlie Parker, John Coltrane, Miles Davis, Lester Young, Sonny Rollins, Cannonball Adderley y B.B. King. Incluye sus rasgos, qué escuchar y los libros oficiales con sus solos transcritos, en la clave de tu instrumento (enlaces comprobados en la editorial).
+- **Recursos emblemáticos:** cada recurso es una frase que se escucha sobre la cadencia elegida, se ve en partitura y se **copia a «Mi vocabulario»** para practicarla en las 12 tonalidades.
+- **Derechos de autor:** las frases son originales, construidas con los recursos de cada músico. No se reproducen sus solos ni sus transcripciones, que tienen derechos de autor. Datos en `src/content/greats.ts`.
+
+El explorador de cadencias también tiene ahora los pasos:
+- *Sin cuadratura:* tríada + escala, grupos de 3 y de 5, desplazamiento.
+- *Aproximaciones:* cromática desde abajo, diatónica desde arriba, enclosures, dobles cromáticas y enclosure de 3 notas, hacia la 1, 3, 5 o 7, en negras, corcheas o semicorcheas.
+- *Estilos de los grandes.*
+
 ## Taller de improvisación
 
 Generador de solos de ejemplo **originales y explicados** sobre cualquier progresión y tonalidad, con siete ideas: notas guía, líneas a notas objetivo, arpegios desde la 3ª, motivo y desarrollo, pregunta-respuesta de blues, ritmo y espacio, y bebop. Cada nota se analiza respecto al acorde que suena (nota guía, nota del acorde, tensión, blue note, aproximación, nota de paso) y se colorea en la partitura. Flujo: escuchar → repetir después de la base → transformar (desplazar, cambiar el final…) → tu turno con un reto → grabarte → guardar en **Mi vocabulario** y practicarlo en las 12 tonalidades con repaso espaciado.

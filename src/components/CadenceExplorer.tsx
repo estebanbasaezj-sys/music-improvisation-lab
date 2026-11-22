@@ -3,7 +3,10 @@
 // Cada idea se ve en partitura, suena con acompañamiento, se puede repetir frase a frase y tiene un reto.
 import { useEffect, useMemo, useState } from 'react';
 import { BackingStyle, STYLE_LABEL } from '../audio/backing';
-import { CADENCES, EXERCISES, ExCtx, STEPS, ScalePick, ScaleTag, StepId, cadenceById, cadenceEvents, easyPicks, exerciseById, exercisesOf, modeOver, pickNotes, pickPcs, scaleOptions } from '../theory/cadence';
+import { CADENCES, EXERCISES, ExCtx, FIGURE_LABEL, Figure, STEPS, ScalePick, ScaleTag, StepId, buildExercise, cadenceById, cadenceEvents, easyPicks, modeOver, pickNotes, pickPcs, scaleOptions } from '../theory/cadence';
+import { STYLE_EXERCISES } from '../theory/ways';
+import { GreatPanel } from './GreatPanel';
+import type { Great } from '../content/greats';
 import { chordNotes, chordSymbol } from '../theory/chords';
 import { IV, parseNote, pc, transposeNote } from '../theory/notes';
 import { scaleById } from '../theory/scales';
@@ -14,8 +17,14 @@ import { SoloPlayer } from './SoloPlayer';
 import { KeySelect } from './ExerciseRunner';
 import { soloRange, useTransposer } from './common';
 
+// todos los pasos: los del explorador y «Estilos de los grandes» (frases con los recursos de cada músico)
+const ALL_EX = [...EXERCISES, ...STYLE_EXERCISES];
+const ALL_STEPS = [...STEPS, { id: 'estilos' as StepId, name: 'Estilos de los grandes', icon: '👑', goal: 'Frases al estilo de Parker, Coltrane, Miles, Lester Young, Rollins, Cannonball y B.B. King, construidas con sus recursos característicos.' }];
+const exercisesOf = (s: StepId) => ALL_EX.filter((e) => e.step === s);
+const exerciseById = (id: string) => ALL_EX.find((e) => e.id === id) ?? ALL_EX[0];
+
 const TAG_LABEL: Record<ScaleTag, string> = { recomendada: '★ recomendada', segura: 'segura', color: 'color', 'tensión': 'tensión', bebop: 'bebop', blues: 'blues' };
-const SEEDED = new Set(['beb-aprox', 'beb-encl', 'ide-guia', 'ide-motivo', 'beb-linea']);
+const SEEDED = new Set(['beb-aprox', 'beb-encl', 'ide-guia', 'ide-motivo', 'beb-linea', 'estilo-parker', 'estilo-miles', 'estilo-rollins', 'estilo-bbking', 'estilo-cannonball']);
 
 export function CadenceExplorer() {
   const t = useTransposer();
@@ -31,6 +40,8 @@ export function CadenceExplorer() {
   const [exId, setExId] = useState('esc-fund');
   const [seed, setSeed] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
+  const [figure, setFigure] = useState<Figure | 'auto'>('auto');
+  const [target, setTarget] = useState<'1' | '3' | '5' | '7'>('3');
 
   const chooseCadence = (id: string) => {
     const c = cadenceById(id);
@@ -55,18 +66,20 @@ export function CadenceExplorer() {
   const scaleName = (p: ScalePick) => `${t.noteName(p.root)} ${scaleById(p.scale).name.toLowerCase()}`;
   const range = soloRange(t.instrument, app.settings.saxType);
   const ex = exerciseById(exId);
-  const ctx: ExCtx = { events, picks, range, keyRoot, minor: !!cad.minor, blues: !!cad.blues, loops: !!cad.loops, seed, names: { note: t.noteName, chord: t.chordName }, scaleName };
-  const result = useMemo(() => ex.build(ctx), [ex, events, picks, range.lo, range.hi, seed, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
+  const usesFigure = !!ex.scalable || ex.step === 'aprox';
+  const fig: Figure | undefined = figure === 'auto' ? (ex.step === 'aprox' ? 'e' : undefined) : figure;
+  const ctx: ExCtx = { events, picks, range, keyRoot, minor: !!cad.minor, blues: !!cad.blues, loops: !!cad.loops, seed, names: { note: t.noteName, chord: t.chordName }, scaleName, figure: usesFigure ? fig : undefined, target };
+  const result = useMemo(() => buildExercise(ex, ctx), [ex, events, picks, range.lo, range.hi, seed, t.instrument, t.sax, app.settings.noteNames, fig, target, usesFigure]); // eslint-disable-line react-hooks/exhaustive-deps
   const chosen = useMemo<ChosenScale[]>(() => picks.map((p) => ({ pcs: pickPcs(p), notes: pickNotes(p), name: scaleName(p) })), [picks, t.instrument, t.sax]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doneKey = (id: string) => `${cad.id}:${id}`;
   const isDone = (id: string) => !!app.explorer[doneKey(id)];
-  const doneCount = EXERCISES.filter((e) => isDone(e.id)).length;
+  const doneCount = ALL_EX.filter((e) => isDone(e.id)).length;
   const goStep = (s: StepId) => { setStep(s); setExId(exercisesOf(s)[0].id); setSeed(1); };
   const goEx = (id: string) => { setExId(id); setStep(exerciseById(id).step); setSeed(1); };
   const nextEx = () => {
-    const i = EXERCISES.findIndex((e) => e.id === exId);
-    const nx = EXERCISES[(i + 1) % EXERCISES.length];
+    const i = ALL_EX.findIndex((e) => e.id === exId);
+    const nx = ALL_EX[(i + 1) % ALL_EX.length];
     goEx(nx.id);
   };
   const tried = () => {
@@ -75,7 +88,7 @@ export function CadenceExplorer() {
     setToast(first ? `+${EXPLORE_XP} XP · ¡bien! Sigue con la siguiente idea.` : 'Ya lo habías probado: ¡repetir es como se aprende!');
   };
   useEffect(() => { if (!toast) return; const h = setTimeout(() => setToast(null), 2600); return () => clearTimeout(h); }, [toast]);
-  const bpm = step === 'escala' || step === 'arpegios' ? (kid ? 70 : 80) : step === 'ideas' ? 90 : 110;
+  const bpm = fig === 's' ? (kid ? 50 : 60) : step === 'escala' || step === 'arpegios' || step === 'aprox' ? (kid ? 70 : 80) : step === 'ideas' || step === 'combina' ? 90 : 110;
   const chordsLine = (evts = events) => {
     const out: string[] = [];
     evts.forEach((e, i) => { if (i === 0 || chordSymbol(e.chord) !== chordSymbol(evts[i - 1].chord)) out.push(t.chordName(e.chord)); });
@@ -152,9 +165,9 @@ export function CadenceExplorer() {
 
       <section className="cx-sec">
         <h3 className="cx-h"><span className="cx-num">3</span> Prueba ideas, de menos a más</h3>
-        <div className="cx-progress small"><span className="cx-bar"><i style={{ width: `${(doneCount / EXERCISES.length) * 100}%` }} /></span> {doneCount} de {EXERCISES.length} ideas probadas en esta cadencia</div>
+        <div className="cx-progress small"><span className="cx-bar"><i style={{ width: `${(doneCount / ALL_EX.length) * 100}%` }} /></span> {doneCount} de {ALL_EX.length} ideas probadas en esta cadencia</div>
         <div className="cx-ladder" role="tablist">
-          {STEPS.map((s, k) => {
+          {ALL_STEPS.map((s, k) => {
             const list = exercisesOf(s.id);
             const d = list.filter((e) => isDone(e.id)).length;
             return (
@@ -165,7 +178,7 @@ export function CadenceExplorer() {
             );
           })}
         </div>
-        <p className="small muted">{STEPS.find((s) => s.id === step)!.goal}</p>
+        <p className="small muted">{ALL_STEPS.find((s) => s.id === step)!.goal}</p>
         <div className="cx-exs">
           {exercisesOf(step).map((e, k) => (
             <button key={e.id} className={`chip ${e.id === exId ? 'on' : ''}`} onClick={() => goEx(e.id)}>{isDone(e.id) ? '✓ ' : `${String.fromCharCode(97 + k)}) `}{e.name}</button>
@@ -174,14 +187,31 @@ export function CadenceExplorer() {
         <div className="card cx-ex">
           <h4 className="cx-ex-title">{ex.name}</h4>
           <p>{ex.how}</p>
+          {(usesFigure || ex.step === 'aprox') && (
+            <div className="row gap wrap cx-opts-row">
+              {usesFigure && (
+                <div className="segmented sm" role="radiogroup" aria-label="Figura rítmica">
+                  <button className={figure === 'auto' ? 'on' : ''} onClick={() => setFigure('auto')}>Auto</button>
+                  {(['q', 'e', 's'] as Figure[]).map((f) => <button key={f} className={figure === f ? 'on' : ''} onClick={() => setFigure(f)}>{FIGURE_LABEL[f]}</button>)}
+                </div>
+              )}
+              {ex.step === 'aprox' && (
+                <div className="segmented sm" role="radiogroup" aria-label="Nota de llegada">
+                  <span className="seg-label">Llegar a:</span>
+                  {(['1', '3', '5', '7'] as const).map((d) => <button key={d} className={target === d ? 'on' : ''} onClick={() => setTarget(d)}>{d === '1' ? 'Fundamental' : `${d}ª`}</button>)}
+                </div>
+              )}
+            </div>
+          )}
           {ex.origin && <p className="small cx-origin">📜 <b>De dónde viene:</b> {ex.origin}</p>}
           {result ? (
-            <SoloPlayer key={`${cad.id}-${key}-${mode}-${picks.map((p) => p.scale + pc(p.root)).join()}-${ex.id}-${seed}-${style}`}
+            <SoloPlayer key={`${cad.id}-${key}-${mode}-${picks.map((p) => p.scale + pc(p.root)).join()}-${ex.id}-${seed}-${style}-${fig}-${target}`}
               events={events} notes={result.notes} phrases={result.phrases} keyRoot={keyRoot} blues={!!cad.blues} style={style} bpm={bpm}
               source={`Explorador · ${cad.name} · ${ex.name}`} scales={chosen} />
           ) : (
             <p className="warn">No aplica a esta cadencia: {ex.needs} Prueba con «ii – V – I mayor» o «V7 → I».</p>
           )}
+          {ex.step === 'estilos' && <GreatPanel id={ex.id.replace('estilo-', '') as Great['id']} />}
           <div className="cx-challenge"><b>🎯 Ahora tú:</b> {ex.challenge} <span className="muted small">Usa «▶ Base (tocas tú)»: el acompañamiento sigue en bucle hasta que lo pares.</span></div>
           <div className="row gap wrap">
             <button className={`btn ${isDone(ex.id) ? '' : 'primary'}`} onClick={tried}>{isDone(ex.id) ? '✓ Probado (repetir)' : `✓ ¡Lo probé! (+${EXPLORE_XP} XP)`}</button>

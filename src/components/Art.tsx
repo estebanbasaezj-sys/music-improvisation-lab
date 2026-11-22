@@ -120,6 +120,7 @@ export function Mascot({ inst, size = 96, mood = 'happy', say }: { inst: Instrum
 // ------------------------------------------------------------- íconos de línea
 const P: Record<string, string> = {
   book: 'M3 5.5c3-1.4 6-1.2 9 .8v13c-3-2-6-2.2-9-.8z M21 5.5c-3-1.4-6-1.2-9 .8v13c3-2 6-2.2 9-.8z',
+  crown: 'M3.5 8.5l4.5 3.8L12 5l4 7.3 4.5-3.8L18.8 18H5.2z M5.2 21h13.6',
   dumbbell: 'M2.5 10v4 M5.5 7v10 M18.5 7v10 M21.5 10v4 M5.5 12h13',
   trophy: 'M7 4h10v5a5 5 0 0 1-10 0z M7 6H4.5a2.5 2.5 0 0 0 2.5 4 M17 6h2.5a2.5 2.5 0 0 1-2.5 4 M12 14v3 M8.5 20.5h7 M10 17h4v3.5h-4z',
   lock: 'M6 11h12v9.5H6z M8.5 11V8a3.5 3.5 0 0 1 7 0v3 M12 15v2',

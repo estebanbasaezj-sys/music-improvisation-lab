@@ -6,6 +6,7 @@ import { currentStreak, xpToday } from './progress/store';
 import { Today } from './pages/Today';
 import { LessonPage, RoutePage } from './pages/Route';
 import { Lab } from './pages/Lab';
+import { GreatsPage } from './pages/Greats';
 import { RecordingsPage, ResourcesPage, SongPage, SongsPage, TheoryPage } from './pages/Other';
 import { ProgressPage } from './pages/Progress';
 import { DiagnosticPage } from './pages/Diagnostic';
@@ -31,6 +32,7 @@ const NAV: { path: string; label: string; icon: IconName }[] = [
   { path: 'lab', label: 'Laboratorio', icon: 'sliders' },
   { path: 'estudio', label: 'Sacar solos', icon: 'headphones' },
   { path: 'canciones', label: 'Canciones', icon: 'note' },
+  { path: 'grandes', label: 'Los grandes', icon: 'crown' },
   { path: 'vocabulario', label: 'Vocabulario', icon: 'cards' },
   { path: 'teoria', label: 'Teoría', icon: 'theory' },
   { path: 'grabaciones', label: 'Grabaciones', icon: 'mic' },
@@ -79,6 +81,7 @@ export function App() {
     case 'tema': page = <TunePage id={arg} />; break;
     case 'admin': page = <AdminPage />; break;
     case 'planes': page = <PlansPage />; break;
+    case 'grandes': page = <GreatsPage />; break;
     default: page = <Home />;
   }
   const navSeg = seg === 'leccion' || seg === 'ruta' ? 'teoria' : seg === 'cancion' ? 'canciones' : seg === 'tema' ? 'repertorio' : seg === 'diagnostico' || seg === 'admin' || seg === 'planes' ? 'progreso' : ['nodo', 'nivel', 'saltar'].includes(seg) ? 'camino' : seg === 'repaso' || seg === 'sesion' ? 'hoy' : seg || 'hoy';

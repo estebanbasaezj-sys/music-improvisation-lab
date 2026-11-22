@@ -12,6 +12,8 @@ interface Props {
   frets?: number;
   startFret?: number;
   only?: { string: number; fret: number }[]; // si se pasa, solo se iluminan estas posiciones
+  /** con `only`: las demás notas se ven tenues (mapa completo) en lugar de ocultarse */
+  ghost?: boolean;
   question?: { string: number; fret: number };
   onPlay?: (midi: number) => void;
   activeMidi?: number | null;
@@ -19,7 +21,7 @@ interface Props {
 
 const INLAYS = [3, 5, 7, 9, 15, 17];
 
-export function Fretboard({ marks, frets = 15, startFret = 0, only, question, onPlay, activeMidi }: Props) {
+export function Fretboard({ marks, frets = 15, startFret = 0, only, ghost, question, onPlay, activeMidi }: Props) {
   const fw = 52;
   const sh = 26;
   const left = 34;
@@ -30,7 +32,7 @@ export function Fretboard({ marks, frets = 15, startFret = 0, only, question, on
   const x = (f: number) => left + (f - startFret) * fw + (f === 0 ? -fw / 2 + 10 : -fw / 2);
   return (
     <div className="scroll-x">
-      <svg className="fretboard" viewBox={`0 0 ${width} ${height}`} style={{ minWidth: Math.min(width, 900) }} role="img" aria-label="Diapasón de guitarra">
+      <svg className={`fretboard ${activeMidi != null ? 'is-playing' : ''}`} viewBox={`0 0 ${width} ${height}`} style={{ minWidth: Math.min(width, 900) }} role="img" aria-label="Diapasón de guitarra">
         <rect x={left} y={top - 6} width={width - left - 10} height={sh * 5 + 12} rx="4" className="fb-wood" />
         {Array.from({ length: frets - startFret + 1 }, (_, i) => i + startFret).map((f) => (
           <g key={f}>
@@ -54,7 +56,7 @@ export function Fretboard({ marks, frets = 15, startFret = 0, only, question, on
               const cy = top + row * sh;
               if (isQ) return <g key={f}><circle cx={cx} cy={cy} r="11" className="dot q" /><text x={cx} y={cy + 4} className="dot-label">?</text></g>;
               return (
-                <g key={f} className="fb-cell" onClick={() => onPlay?.(m)}>
+                <g key={f} className={`fb-cell ${activeMidi === m && allowed ? 'is-active' : ''}`} onClick={() => onPlay?.(m)}>
                   <rect x={cx - fw / 2 + 2} y={cy - sh / 2} width={fw - 4} height={sh} fill="transparent" />
                   {mk && allowed && !question && (
                     <>
@@ -62,6 +64,7 @@ export function Fretboard({ marks, frets = 15, startFret = 0, only, question, on
                       <text x={cx} y={cy + 4} className="dot-label">{mk.label}</text>
                     </>
                   )}
+                  {mk && !allowed && ghost && !question && <circle cx={cx} cy={cy} r="7" className={`dot ghost ${mk.role}`} />}
                 </g>
               );
             })}

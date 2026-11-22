@@ -1013,3 +1013,14 @@ a.yt-poster.ext { text-decoration: none; }
 }
 @media (max-width: 480px) { .cx-cads { grid-template-columns: 1fr; } }
 .age-nino .cx-cad, .age-nino .cx-step { min-height: 56px; }
+
+/* diapasón: solo lo que suena / todo el diapasón */
+.path-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; margin: .4rem 0 .2rem; }
+.path-ctl .path-help { flex-basis: 100%; margin: 0; }
+.path-pos { margin: 0; }
+.path-pos .chip small { color: inherit; opacity: .75; }
+.dot.ghost { opacity: .22; stroke: none; }
+/* mientras suena: la nota actual se enciende y las demás del recorrido se atenúan */
+.fretboard .dot, .fretboard .dot-label { transition: opacity .12s; }
+.fretboard.is-playing .fb-cell:not(.is-active) .dot:not(.ghost), .fretboard.is-playing .fb-cell:not(.is-active) .dot-label { opacity: .42; }
+.fretboard .fb-cell.is-active .dot { stroke: #fff; stroke-width: 3.5; filter: drop-shadow(0 0 6px rgba(255, 214, 102, .95)); }

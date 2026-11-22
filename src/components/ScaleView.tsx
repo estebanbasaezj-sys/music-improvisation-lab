@@ -24,17 +24,17 @@ export function ScaleView({ scaleId, keyName, arpeggio, compact }: { scaleId: st
   const view: ViewNote[] = notes.map((n, i) => ({ note: n, degree: s.degrees[i], role: i === 0 ? 'root' : s.characteristic?.includes(s.degrees[i]) ? 'char' : 'scale' }));
 
   const arpChord = arpeggio ? parseChord(arpeggio) : s.chords[0] ? { root, quality: qualityById(s.chords[0]) } : null;
+  // arpegio: notas del acorde + octava, subiendo y bajando (lo que se ilumina mientras suena)
+  const arpSeq = arpChord ? (() => { const ps = chordPitches(arpChord, tonic.octave); const top = { ...ps[0], octave: ps[0].octave + 1 }; return [...ps, top, ...[...ps].reverse()]; })() : [];
+  const shownSeq = playing === 'arp' ? arpSeq : seq;
   const play = (which: 'scale' | 'arp') => {
     if (playing) { stopSequence(); setPlaying(null); setActive(null); return; }
-    let ms: number[];
-    if (which === 'arp' && arpChord) {
-      const ps = chordPitches(arpChord, tonic.octave).map(midi);
-      ms = [...ps, ps[0] + 12, ...[...ps].reverse()];
-    } else ms = seq.map(midi);
+    const ms = (which === 'arp' ? arpSeq : seq).map(midi);
     setPlaying(which);
     playSequence(voiceFor(t.instrument), ms.map((m, i) => ({ midi: m, start: i * 0.5, dur: 0.5 })), bpm, {
+      label: `${names(root)} ${s.name} · ${which === 'arp' && arpChord ? `arpegio ${t.chordName(arpChord)}` : 'escala'} · ♩ = ${bpm}`,
       swing: false,
-      onNote: (i) => setActive(which === 'scale' ? i : null),
+      onNote: (i) => setActive(i),
       onEnd: () => { setPlaying(null); setActive(null); },
     });
   };
@@ -62,7 +62,7 @@ export function ScaleView({ scaleId, keyName, arpeggio, compact }: { scaleId: st
         <Segmented size="sm" value={mode} onChange={setMode} options={[{ value: 'degree', label: 'Grados' }, { value: 'name', label: 'Nombres' }]} />
         <span className="legend"><i className="lg root" />tónica <i className="lg char" />característica <i className="lg scale" />escala</span>
       </div>
-      <InstrumentView notes={view} sequence={seq} labelMode={mode} active={active} />
+      <InstrumentView notes={view} sequence={shownSeq} labelMode={mode} active={active} pathToggle playing={!!playing} />
       {!compact && (
         <div className="grid2">
           <div>

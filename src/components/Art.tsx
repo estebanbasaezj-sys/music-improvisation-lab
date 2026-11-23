@@ -138,6 +138,9 @@ const P: Record<string, string> = {
   chart: 'M4 20h16 M7 16.5v-5 M12 16.5V7 M17 16.5V9.5',
   flame: 'M12 3c1 3.5 5.5 6 5.5 11a5.5 5.5 0 0 1-11 0c0-2.5 1.5-3.8 2-5.5c.8 1.6.8 2.8 2 3.5c0-3.5.7-6.3 1.5-9z',
   bolt: 'M13 2.5L5.5 13.5h5.5l-1 8L18.5 10.5H13z',
+  grid: 'M4.5 4.5h6v6h-6z M13.5 4.5h6v6h-6z M4.5 13.5h6v6h-6z M13.5 13.5h6v6h-6z',
+  gauge: 'M3.5 17a8.5 8.5 0 0 1 17 0 M12 17l4.2-5.2 M7 17h.01 M17 17h.01',
+  play: 'M8 5.5v13l10.5-6.5z',
 };
 
 export type IconName = keyof typeof P;

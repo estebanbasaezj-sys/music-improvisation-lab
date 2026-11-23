@@ -1,6 +1,6 @@
 // Repertorio tipo «Real Book»: lista filtrable de temas clásicos y página de práctica de cada tema
 // (cifrado por instrumento, melodía, solos de ejemplo, base para improvisar y grabación original).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LINKS_CHECKED, TAG_LABEL, TUNES, Tune, TuneTag, parseMelody, tuneById } from '../content/repertoire';
 import { IDEAS, IdeaId, generateSolo } from '../theory/improv';
 import { ChordEvent, keyInterval, parseChart, transposeEvents } from '../theory/progressions';
@@ -10,8 +10,9 @@ import { fitLine } from '../theory/section';
 import { INSTRUMENT_LABEL, InstrumentId, concertKeyToWritten } from '../theory/instruments';
 import { STYLE_LABEL } from '../audio/backing';
 import { useAppState } from '../progress/store';
-import { Card, Segmented, soloRange, useNames, useTransposer } from '../components/common';
+import { Card, KEY_OPTIONS, Segmented, soloRange, useNames, useTransposer } from '../components/common';
 import { KeySelect } from '../components/ExerciseRunner';
+import { SpotProvider, fragWords, keyWords, useInitialParams, useSpot } from '../practice/spot';
 import { SoloPlayer, PlayerPhrase } from '../components/SoloPlayer';
 import { BackingPanel } from '../components/BackingPanel';
 import { YouTubeEmbed } from '../components/YouTubeEmbed';
@@ -124,21 +125,60 @@ function instrumentTips(t: Tune, inst: InstrumentId): string[] {
   return out;
 }
 
-type Tab = 'tema' | 'solos' | 'improvisa';
+type Mode = 'ref' | 'ejercicio' | 'base';
+type ExTab = 'melodia' | 'solos';
+const MODE_INFO: Record<Mode, { icon: string; label: string }> = {
+  ref: { icon: '🎧', label: 'Grabación de referencia' },
+  ejercicio: { icon: '🎼', label: 'Ejercicio sobre la armonía' },
+  base: { icon: '🥁', label: 'Tocar con la base' },
+};
 
 export function TunePage({ id }: { id: string }) {
+  const tune = tuneById(id);
+  const names = useNames();
+  return (
+    <SpotProvider describe={(p) => {
+      const m = (p.get('modo') as Mode) || 'ejercicio';
+      const key = p.get('tono') ?? (tune ? keyRootOf(tune.key) : 'C');
+      const minor = tune ? isMinor(tune.key) : false;
+      return {
+        id: `tema:${id}`,
+        title: `${tune?.title ?? 'Tema'} · ${MODE_INFO[m].label}`,
+        detail: `${fragWords(p.get('c'), 'tema completo')} · ♩ = ${p.get('bpm') ?? tune?.practiceTempo ?? 100} · ${keyWords(names(parseNote(key)), minor)}`,
+      };
+    }}>
+      <TuneBody id={id} />
+    </SpotProvider>
+  );
+}
+
+function TuneBody({ id }: { id: string }) {
   const tune = tuneById(id);
   const s = useAppState();
   const t = useTransposer();
   const names = useNames();
   const keyLabel = useKeyLabel();
-  const [key, setKey] = useState(tune ? keyRootOf(tune.key) : 'C');
-  const [sec, setSec] = useState<number | null>(null);
-  const [tab, setTab] = useState<Tab>('tema');
+  const spot = useSpot();
+  const params = useInitialParams();
+  const bars = tune?.sections[tune.sections.length - 1].toBar ?? 0;
+  const [key, setKeyState] = useState(() => { const k = params.get('tono'); return k && KEY_OPTIONS.includes(k) ? k : tune ? keyRootOf(tune.key) : 'C'; });
+  const [win, setWinState] = useState<{ fromBar: number; toBar: number; label: string } | null>(() => {
+    const m = /^(\d+)-(\d+)$/.exec(params.get('c') ?? '');
+    if (!m || !tune) return null;
+    const a = +m[1] - 1, b = +m[2] - 1;
+    if (a < 0 || b > bars || a > b) return null;
+    const sec = tune.sections.find((x) => x.fromBar === a && x.toBar === b);
+    return { fromBar: a, toBar: b, label: sec ? sec.label : `Compases ${a + 1}–${b + 1}` };
+  });
+  const [mode, setModeState] = useState<Mode>(() => { const m = params.get('modo'); return m === 'ref' || m === 'base' || m === 'ejercicio' ? m : 'ejercicio'; });
+  const [exTab, setExTab] = useState<ExTab>(() => (params.get('ver') === 'solos' ? 'solos' : 'melodia'));
   const [idea, setIdea] = useState<IdeaId>(tune?.tags.includes('blues') ? 'blues' : 'targets');
   const [level, setLevel] = useState<1 | 2 | 3>(2);
   const [seed, setSeed] = useState(1);
   const range = soloRange(t.instrument, s.settings.saxType);
+  const setKey = (k: string) => { setKeyState(k); spot?.set({ tono: tune && k === keyRootOf(tune.key) ? null : k }); };
+  const setWin = (w: typeof win) => { setWinState(w); spot?.set({ c: w ? `${w.fromBar + 1}-${w.toBar + 1}` : null, frag: null }); };
+  const setMode = (m: Mode) => { setModeState(m); spot?.set({ modo: m === 'ejercicio' ? null : m, bpm: null, bpmBase: null, frag: null }); };
 
   const full = useMemo<ChordEvent[]>(() => {
     if (!tune) return [];
@@ -146,8 +186,6 @@ export function TunePage({ id }: { id: string }) {
     return transposeEvents(base, keyInterval(parseNote(keyRootOf(tune.key)), parseNote(key)));
   }, [tune, key]);
   const semis = tune ? keyInterval(parseNote(keyRootOf(tune.key)), parseNote(key)).semitones : 0;
-  const bars = tune?.sections[tune.sections.length - 1].toBar ?? 0;
-  const win = sec === null || !tune ? null : tune.sections[sec];
   const events = useMemo(() => (win ? full.filter((e) => e.bar >= win.fromBar && e.bar <= win.toBar).map((e) => ({ ...e, bar: e.bar - win.fromBar })) : full), [full, win]);
   const keyRoot = parseNote(key);
   const minor = tune ? isMinor(tune.key) : false;
@@ -161,17 +199,24 @@ export function TunePage({ id }: { id: string }) {
     if (tune.melody) {
       const all = fitLine(parseMelody(tune.melody.notes).map((n) => ({ ...n, midi: n.midi + semis })), range);
       const notes = all.filter((n) => n.start >= from - 1e-9 && n.start < to - 1e-9).map((n) => ({ ...n, start: n.start - from }));
-      const phrases = tune.sections.filter((x) => !win || x === win).map((x) => ({ start: x.fromBar * 4 - from, end: (x.toBar + 1) * 4 - from, title: `${x.label}`, text: 'Melodía real del tema. Tócala tal cual y después varíala: cambia el ritmo, adorna las notas largas o responde a cada frase.' }));
+      const phrases = tune.sections.filter((x) => !win || (x.fromBar >= win.fromBar && x.toBar <= win.toBar)).map((x) => ({ start: x.fromBar * 4 - from, end: (x.toBar + 1) * 4 - from, title: `${x.label}`, text: 'Melodía real del tema. Tócala tal cual y después varíala: cambia el ritmo, adorna las notas largas o responde a cada frase.' }));
       return { notes, phrases, real: true, summary: tune.melody.source };
     }
     const solo = generateSolo({ events, keyRoot, minor, blues, range, level: 2, seed: [...tune.id].reduce((a, c) => a + c.charCodeAt(0), 0), idea: 'guide', names: { note: t.noteName, chord: t.chordName } });
-    return { notes: solo.notes, phrases: solo.phrases, real: false, summary: 'Melodía de estudio ORIGINAL generada por la app sobre la armonía del tema (no es la melodía del tema). Sirve para aprender la forma y oír cada acorde; escucha la grabación oficial para conocer la melodía real.' };
+    return { notes: solo.notes, phrases: solo.phrases, real: false, summary: 'Melodía de estudio ORIGINAL generada por la app sobre la armonía del tema (no es la melodía del tema). Sirve para aprender la forma y oír cada acorde; escucha la grabación de referencia para conocer la melodía real.' };
   }, [tune, events, key, range.lo, range.hi, t.instrument, t.sax, s.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const avail = IDEAS.filter((i) => blues || !i.needsBlues);
   const solo = useMemo(() => (tune ? generateSolo({ events, keyRoot, minor, blues, range, level, seed, idea, names: { note: t.noteName, chord: t.chordName } }) : null), [tune, events, key, level, seed, idea, range.lo, range.hi, t.instrument, t.sax, s.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (tune) trackFeature('tema', { id: tune.id }); }, [tune?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // al llegar con compases elegidos (p. ej. desde el análisis en Canciones) se va directo a la práctica
+  const modesRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (!params.get('c') && !params.get('modo')) return;
+    const id = window.setTimeout(() => modesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!tune) return <div className="page"><a className="back" href="#/repertorio">← Repertorio</a><p>Tema no encontrado.</p></div>;
   if (tuneLocked(s.settings.plan, tune.id)) return (
     <div className="page tune-page">
@@ -183,9 +228,20 @@ export function TunePage({ id }: { id: string }) {
   );
   const secLabel = win ? ` · ${win.label} (c. ${win.fromBar + 1}–${win.toBar + 1})` : '';
   const query = `${tune.title} ${tune.recording.artist}`;
+  const winValue = win ? `${win.fromBar}-${win.toBar}` : 'all';
+  const custom = win && !tune.sections.some((x) => x.fromBar === win.fromBar && x.toBar === win.toBar);
+  const keyControl = <KeySelect value={key} onChange={setKey} />;
+  const modeHint: Record<Mode, string> = {
+    ref: `La grabación original de ${tune.recording.artist} (${tune.recording.year}), en el reproductor oficial de YouTube.`,
+    ejercicio: melody.real ? 'La melodía real (dominio público) y solos de ejemplo creados por la app sobre estos acordes.' : 'Una melodía de estudio y solos de ejemplo creados por la app sobre estos acordes (no es la melodía original).',
+    base: 'Solo el acompañamiento: tocas tú la melodía o improvisas. Sin micrófono.',
+  };
   return (
     <div className="page tune-page">
-      <a href="#/repertorio" className="back">← Repertorio</a>
+      <div className="row between wrap">
+        <a href="#/repertorio" className="back">← Repertorio</a>
+        {tune.songId && <a className="link-chip" href={`#/cancion/${tune.songId}`}>📘 Análisis y tareas en Canciones</a>}
+      </div>
       <div className={`tune-head st-${tune.style}`}>
         <div className="th-main">
           <span className="tc-style">{STYLE_LABEL[tune.style]}</span>
@@ -201,54 +257,77 @@ export function TunePage({ id }: { id: string }) {
       <p>{tune.about}</p>
       {tune.versionNote && <p className="warn small">ℹ {tune.versionNote}</p>}
 
-      <Card title="🎧 Grabación original" className="listen-card">
-        <p className="small">{tune.recording.artist} — <i>{tune.recording.album}</i> ({tune.recording.year}). Escúchala primero; después tócala aquí a tu velocidad.</p>
-        <YouTubeEmbed key={tune.id} videos={tune.recording.youtube} query={query} checked={LINKS_CHECKED} />
-      </Card>
-
-      <div className="tune-controls">
-        <KeySelect value={key} onChange={setKey} />
-        <label className="field inline"><span>Sección</span>
-          <select value={sec ?? 'all'} onChange={(e) => setSec(e.target.value === 'all' ? null : Number(e.target.value))}>
-            <option value="all">Tema completo ({bars + 1} compases)</option>
-            {tune.sections.map((x, i) => <option key={i} value={i}>{x.label} · c. {x.fromBar + 1}–{x.toBar + 1}</option>)}
-          </select>
-        </label>
-        {t.isSax && <span className="pill">Cifrado y partitura escritos para saxo {s.settings.saxType}</span>}
+      <h2 className="sec-title" ref={modesRef}>¿Qué quieres escuchar?</h2>
+      <div className="mode-cards" role="radiogroup" aria-label="Qué escuchar">
+        {(Object.keys(MODE_INFO) as Mode[]).map((m) => (
+          <button key={m} role="radio" aria-checked={mode === m} className={`mode-card ${mode === m ? 'on' : ''}`} onClick={() => setMode(m)}>
+            <span className="mc-ico" aria-hidden="true">{MODE_INFO[m].icon}</span>
+            <b>{MODE_INFO[m].label}{mode === m && <span className="mc-check"> ✓</span>}</b>
+            <small>{modeHint[m]}</small>
+          </button>
+        ))}
       </div>
 
-      <Segmented value={tab} onChange={setTab} options={[{ value: 'tema', label: melody.real ? '🎼 Tema (melodía real)' : '🎼 Tema (melodía de estudio)' }, { value: 'solos', label: '✨ Solos de ejemplo' }, { value: 'improvisa', label: '🎷 Improvisa tú' }]} />
+      {mode !== 'ref' && (
+        <div className="tune-controls">
+          {keyControl}
+          <label className="field inline"><span>Compases</span>
+            <select value={winValue} onChange={(e) => {
+              if (e.target.value === 'all') return setWin(null);
+              const [a, b] = e.target.value.split('-').map(Number);
+              const sec = tune.sections.find((x) => x.fromBar === a && x.toBar === b);
+              setWin({ fromBar: a, toBar: b, label: sec ? sec.label : `Compases ${a + 1}–${b + 1}` });
+            }}>
+              <option value="all">Tema completo ({bars + 1} compases)</option>
+              {tune.sections.map((x, i) => <option key={i} value={`${x.fromBar}-${x.toBar}`}>{x.label} · c. {x.fromBar + 1}–{x.toBar + 1}</option>)}
+              {custom && win && <option value={winValue}>Compases {win.fromBar + 1}–{win.toBar + 1}</option>}
+            </select>
+          </label>
+          {t.isSax && <span className="pill">Cifrado y partitura escritos para saxo {s.settings.saxType}</span>}
+        </div>
+      )}
 
-      {tab === 'tema' && (
-        <Card>
-          <p className={melody.real ? 'hint small' : 'teacher small'}>{melody.summary}</p>
-          {melody.notes.length > 0 ? (
-            <SoloPlayer key={`${tune.id}-${key}-${sec}-${t.instrument}`} events={events} notes={melody.notes} keyRoot={keyRoot} blues={blues} style={tune.style} bpm={tune.practiceTempo}
-              phrases={melody.phrases} title={`${tune.title}${secLabel}`} source={`Repertorio: ${tune.title}`} />
-          ) : <p className="muted">No hay melodía para esta sección.</p>}
-          <p className="muted small">Pulsa «Base (tocas tú)» para que suene solo el acompañamiento y toques la melodía o improvises. Usa la barra de tempo para practicar lento y subir poco a poco. El botón <b>Mezcla</b> de arriba elige qué instrumentos suenan.</p>
+      {mode === 'ref' && (
+        <Card title="🎧 Grabación de referencia" className="listen-card">
+          <p className="small">{tune.recording.artist} — <i>{tune.recording.album}</i> ({tune.recording.year}). Escúchala primero; después elige «Ejercicio sobre la armonía» o «Tocar con la base» para tocarla aquí a tu velocidad.</p>
+          <YouTubeEmbed key={tune.id} videos={tune.recording.youtube} query={query} checked={LINKS_CHECKED} />
+          <div className="row gap wrap"><button className="btn" onClick={() => setMode('base')}>🥁 Ahora, tocar con la base</button></div>
         </Card>
       )}
 
-      {tab === 'solos' && solo && (
+      {mode === 'ejercicio' && (
         <Card>
-          <p className="small">Solos originales generados sobre la armonía de «{tune.title}», explicados nota a nota. Cambia la idea o pide otro ejemplo; guarda en tu vocabulario las frases que te gusten.</p>
-          <div className="chip-row">{avail.map((i) => <button key={i.id} className={`chip ${idea === i.id ? 'on' : ''}`} onClick={() => { setIdea(i.id); setSeed(1); }} title={i.short}>{i.name}</button>)}</div>
-          <div className="row gap wrap">
-            <Segmented size="sm" value={level} onChange={setLevel} options={[{ value: 1, label: 'Sencillo' }, { value: 2, label: 'Medio' }, { value: 3, label: 'Avanzado' }]} />
-            <button className="btn" onClick={() => setSeed(seed + 1)}>🎲 Otro ejemplo</button>
-          </div>
-          <SoloPlayer key={`${tune.id}-${key}-${sec}-${idea}-${level}-${seed}-${t.instrument}`} events={events} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={tune.style} bpm={tune.practiceTempo}
-            phrases={solo.phrases} title={solo.title} summary={solo.summary} source={`Repertorio: ${tune.title}`} />
+          <Segmented value={exTab} onChange={(v) => { setExTab(v); spot?.set({ ver: v === 'solos' ? 'solos' : null, bpm: null, bpmBase: null, frag: null }); }} options={[{ value: 'melodia', label: melody.real ? 'Melodía real' : 'Melodía de estudio' }, { value: 'solos', label: 'Solos de ejemplo' }]} />
+          {exTab === 'melodia' && (
+            <>
+              <p className={melody.real ? 'hint small' : 'teacher small'}>{melody.summary}</p>
+              {melody.notes.length > 0 ? (
+                <SoloPlayer key={`${tune.id}-${key}-${winValue}-${t.instrument}`} events={events} notes={melody.notes} keyRoot={keyRoot} blues={blues} style={tune.style} bpm={tune.practiceTempo}
+                  phrases={melody.phrases} title={`${tune.title}${secLabel}`} source={`Repertorio: ${tune.title}`} keyControl={keyControl} />
+              ) : <p className="muted">No hay melodía para esta sección.</p>}
+            </>
+          )}
+          {exTab === 'solos' && solo && (
+            <>
+              <p className="small">Solos originales generados sobre la armonía de «{tune.title}», explicados nota a nota. Cambia la idea o pide otro ejemplo; guarda en tu vocabulario las frases que te gusten.</p>
+              <div className="chip-row">{avail.map((i) => <button key={i.id} className={`chip ${idea === i.id ? 'on' : ''}`} aria-pressed={idea === i.id} onClick={() => { setIdea(i.id); setSeed(1); }} title={i.short}>{i.name}</button>)}</div>
+              <div className="row gap wrap">
+                <Segmented size="sm" value={level} onChange={setLevel} options={[{ value: 1, label: 'Sencillo' }, { value: 2, label: 'Medio' }, { value: 3, label: 'Avanzado' }]} />
+                <button className="btn" onClick={() => setSeed(seed + 1)}>🎲 Otro ejemplo</button>
+              </div>
+              <SoloPlayer key={`${tune.id}-${key}-${winValue}-${idea}-${level}-${seed}-${t.instrument}`} events={events} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={tune.style} bpm={tune.practiceTempo}
+                phrases={solo.phrases} title={solo.title} summary={solo.summary} source={`Repertorio: ${tune.title}`} keyControl={keyControl} />
+            </>
+          )}
         </Card>
       )}
 
-      {tab === 'improvisa' && (
+      {mode === 'base' && (
         <Card>
-          <p className="small">Base completa para improvisar encima: elige velocidad, estilo y qué instrumentos suenan. El cifrado está en tu transposición y se ilumina el acorde que suena.</p>
-          <BackingPanel key={`${tune.id}-${key}-${sec}`} events={events} style={tune.style} bpm={tune.practiceTempo} display="scales" showAnalysis={!win} sections={win ? undefined : tune.sections} />
+          <p className="small">Base para tocar la melodía o improvisar encima: elige compases, velocidad y qué instrumentos suenan. El cifrado está en tu transposición y se ilumina el acorde que suena.</p>
+          <BackingPanel key={`${tune.id}-${key}-${winValue}`} events={events} style={tune.style} bpm={tune.practiceTempo} display="scales" showAnalysis={!win} sections={win ? undefined : tune.sections} keyControl={keyControl} context={`${tune.title}${secLabel}`} />
           <details className="mic-analyze">
-            <summary>🎤 Grabarme y analizar mi improvisación</summary>
+            <summary>🎤 Medir mi improvisación (usa el micrófono)</summary>
             <ImprovAnalyzer events={events} keyRoot={keyRoot} blues={blues} style={tune.style} bpm={tune.practiceTempo} />
           </details>
         </Card>

@@ -10,6 +10,7 @@ import { progressionById, realize } from '../theory/progressions';
 import { parseNote } from '../theory/notes';
 import { resolveKey } from '../learn/curriculum';
 import { Card } from '../components/common';
+import { QUESTIONS } from '../content/diagnostic';
 
 const QS = [
   { id: 'plays', q: '¿Ya tocas este instrumento?', opts: ['Nunca lo he tocado', 'Un poco (menos de 1 año)', 'Sí, toco canciones', 'Sí, e improviso'] },
@@ -21,7 +22,21 @@ export function PlacementPage() {
   const s = useAppState();
   const inst = s.instrument;
   const [stage, setStage] = useState<'intro' | 'q' | 'test' | 'improv' | 'result'>('intro');
-  const [ans, setAns] = useState<Record<string, number>>({});
+  // reutiliza lo ya respondido: la prueba anterior o el diagnóstico
+  const [ans, setAns] = useState<Record<string, number>>(() => {
+    if (s.path[inst].answers) return { ...s.path[inst].answers };
+    const d = s.progress[inst].diagnostic;
+    if (!d) return {};
+    const idx = (id: string, v: string) => QUESTIONS.find((q) => q.id === id)?.options?.indexOf(v) ?? -1;
+    const out: Record<string, number> = {};
+    const exp = idx('experience', d.experience), imp = idx('improvExperience', d.improvExperience), rd = idx('reading', d.reading), hm = idx('harmony', d.harmony);
+    if (exp >= 0 || imp >= 0) out.plays = imp >= 2 ? 3 : exp >= 1 ? 2 : 1;
+    if (rd >= 0) out.read = Math.min(2, rd);
+    if (hm >= 0) out.theory = [1, 1, 2, 3][hm];
+    return out;
+  });
+  const reused = !!s.path[inst].answers || !!s.progress[inst].diagnostic;
+  const saveAnswers = () => update((x) => { x.path[inst].answers = { ...ans }; });
   const [level, setLevel] = useState(0);
   const [tested, setTested] = useState<Record<number, number>>({}); // nivel → precisión
   const [passed, setPassed] = useState(-1);
@@ -70,12 +85,13 @@ export function PlacementPage() {
   );
   if (stage === 'q') return (
     <div className="page"><Card>
+      {reused && <p className="hint small">Ya marcamos lo que respondiste antes{s.progress[inst].diagnostic ? ' en el diagnóstico' : ''}. Revísalo y continúa.</p>}
       {QS.map((q) => (
         <div key={q.id} className="dq"><p><b>{q.q}</b></p>
           <div className="chip-row">{q.opts.map((o, i) => <button key={o} className={`chip big ${ans[q.id] === i ? 'on' : ''}`} onClick={() => setAns({ ...ans, [q.id]: i })}>{o}</button>)}</div>
         </div>
       ))}
-      <button className="btn primary big" disabled={Object.keys(ans).length < QS.length} onClick={() => { if ((ans.plays ?? 0) === 0) { setPassed(-1); setStage('result'); } else { setLevel(startLevel); setStage('test'); } }}>Continuar</button>
+      <button className="btn primary big" disabled={Object.keys(ans).length < QS.length} onClick={() => { saveAnswers(); if ((ans.plays ?? 0) === 0) { setPassed(-1); setStage('result'); } else { setLevel(startLevel); setStage('test'); } }}>Continuar</button>
     </Card></div>
   );
   if (stage === 'test') return (

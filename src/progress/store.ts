@@ -81,6 +81,31 @@ export interface Settings {
   simple: boolean | null;
   /** plan de licencia (sin cobro todavía: «pro» mientras se desarrolla; Administración permite previsualizar «free») */
   plan: Plan;
+  /** el alumno ya eligió su instrumento (y tipo de saxo) en la primera visita */
+  instrumentChosen: boolean;
+}
+
+/** Dónde quedó la práctica de un instrumento: «Retomar» vuelve exactamente ahí (también tras recargar). */
+export interface PracticeSpot {
+  /** identificador estable del ejercicio (p. ej. «tema:autumn-leaves») */
+  id: string;
+  title: string;
+  /** fragmento, tempo y tonalidad en palabras */
+  detail: string;
+  /** ruta con todos los ajustes (#/tema/autumn-leaves?c=1-8&bpm=110…) */
+  route: string;
+  minutes?: number;
+  at: string;
+}
+
+/** Sesión guiada a medio hacer (se retoma en el mismo bloque). */
+export interface GuidedSession {
+  date: string;
+  minutes: 10 | 20 | 30 | 45;
+  idx: number;
+  ratings: Record<number, Rating>;
+  /** bloques fijados al empezar (para retomar exactamente la misma sesión) */
+  blocks?: unknown[];
 }
 
 export interface AppState {
@@ -98,6 +123,10 @@ export interface AppState {
   usage: Record<string, Record<string, number>>;
   /** ejercicios del explorador de cadencias ya probados («cadencia:ejercicio» → fecha) */
   explorer: Record<string, string>;
+  /** última práctica de cada instrumento, para «Retomar práctica» */
+  resume: Record<InstrumentId, PracticeSpot | null>;
+  /** sesión guiada empezada de cada instrumento */
+  guided: Record<InstrumentId, GuidedSession | null>;
 }
 
 export interface GameState {
@@ -116,6 +145,8 @@ export interface NodeState { stars: number; timesDone: number; bestAcc: number; 
 export interface PathState {
   level: number | null; // nivel asignado por la prueba (null = sin prueba)
   placementAt?: string;
+  /** respuestas iniciales de la prueba de nivel (se reutilizan en el diagnóstico) */
+  answers?: Record<string, number>;
   nodes: Record<string, NodeState>;
   mistakes: { key: string; spec: string; count: number; last: string }[];
 }
@@ -141,7 +172,7 @@ const emptyProgress = (): InstrumentProgress => ({ skills: {}, lessons: {}, sess
 export const initialState = (): AppState => ({
   version: 1,
   instrument: 'sax',
-  settings: { saxType: 'tenor', noteNames: 'letras', defaultBpm: 100, profile: null, simple: null, plan: 'pro' },
+  settings: { saxType: 'tenor', noteNames: 'letras', defaultBpm: 100, profile: null, simple: null, plan: 'pro', instrumentChosen: false },
   progress: { sax: emptyProgress(), guitar: emptyProgress(), piano: emptyProgress() },
   shared: { concepts: {} },
   resources: { verified: {}, custom: [] },
@@ -149,6 +180,8 @@ export const initialState = (): AppState => ({
   game: { xp: 0, xpByDay: {}, dailyGoal: 20, streak: { count: 0, lastDay: null, freezes: 1, best: 0 }, achievements: [], micOk: true, lessonsByDay: {}, perfectByDay: {}, chestDay: null },
   usage: {},
   explorer: {},
+  resume: { sax: null, guitar: null, piano: null },
+  guided: { sax: null, guitar: null, piano: null },
   path: { sax: emptyPath(), guitar: emptyPath(), piano: emptyPath() },
   sound: { keys: 'piano', layers: { ...DEFAULT_LAYERS }, volumes: { melody: 0, comp: -5, bass: -2, drums: -6 } },
 });
@@ -202,6 +235,8 @@ function merge(loaded: AppState | null): AppState {
     game: { ...base.game, ...loaded.game, streak: { ...base.game.streak, ...loaded.game?.streak }, lessonsByDay: { ...loaded.game?.lessonsByDay }, perfectByDay: { ...loaded.game?.perfectByDay } },
     usage: { ...loaded.usage },
     explorer: { ...loaded.explorer },
+    resume: { ...base.resume, ...loaded.resume },
+    guided: { ...base.guided, ...loaded.guided },
     path: {
       sax: { ...emptyPath(), ...loaded.path?.sax },
       guitar: { ...emptyPath(), ...loaded.path?.guitar },
@@ -362,6 +397,19 @@ export function streak(p: InstrumentProgress[]): number {
   if (!days.has(d)) d = addDays(d, -1);
   while (days.has(d)) { n++; d = addDays(d, -1); }
   return n;
+}
+
+// ---------- retomar ----------
+export function saveSpot(instrument: InstrumentId, spot: Omit<PracticeSpot, 'at'>) {
+  const prev = state.resume[instrument];
+  if (prev && prev.id === spot.id && prev.route === spot.route && prev.title === spot.title && prev.detail === spot.detail) return;
+  update((s) => { s.resume[instrument] = { ...spot, at: new Date().toISOString() }; });
+}
+export function clearSpot(instrument: InstrumentId) {
+  update((s) => { s.resume[instrument] = null; });
+}
+export function saveGuided(instrument: InstrumentId, g: GuidedSession | null) {
+  update((s) => { s.guided[instrument] = g; });
 }
 
 // ---------- vocabulario ----------

@@ -134,7 +134,7 @@ export function ItemView({ item, ctx, onVerdict, locked }: { item: Item; ctx: Ge
       {a.type === 'mic-note' && !locked && <MicNote target={a.midi} display={display} onResult={(ok, d) => onVerdict({ correct: ok, detail: d, measured: true })} onSkip={() => onVerdict({ correct: true, detail: '', measured: false, skipped: true })} />}
       {a.type === 'mic-seq' && !locked && <MicSeq targets={a.midis} display={display} onResult={(ok, d) => onVerdict({ correct: ok, detail: d, measured: true })} onSkip={() => onVerdict({ correct: true, detail: '', measured: false, skipped: true })} />}
       {a.type === 'mic-chord' && !locked && <MicChord pcs={a.pcs} root={a.root} symbol={a.symbol} onResult={(ok, d, m) => onVerdict({ correct: ok, detail: d, measured: m })} onSkip={() => onVerdict({ correct: true, detail: '', measured: false, skipped: true })} />}
-      {a.type === 'rhythm' && !locked && item.rhythm && <RhythmTap pattern={item.rhythm} bpm={a.bpm} swing={(item.spec as { swing?: boolean }).swing} onResult={(ok, d) => onVerdict({ correct: ok, detail: d, measured: true })} />}
+      {a.type === 'rhythm' && !locked && item.rhythm && <RhythmTap pattern={item.rhythm} bpm={a.bpm} swing={(item.spec as { swing?: boolean }).swing} onResult={(ok, d) => onVerdict({ correct: ok, detail: d, measured: true })} onSkip={() => onVerdict({ correct: true, detail: '', measured: false, skipped: true })} />}
       {a.type === 'order' && !locked && <OrderTiles tiles={a.tiles} onDone={(seq) => onVerdict({ correct: seq.join() === a.correct.join(), detail: '', measured: true })} />}
       {a.type === 'pairs' && !locked && <PairsMatch pairs={a.pairs} onDone={(m) => onVerdict({ correct: m === 0, detail: m ? `${m} intento(s) fallido(s).` : '', measured: true })} />}
     </div>

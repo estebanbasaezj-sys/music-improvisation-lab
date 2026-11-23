@@ -44,6 +44,16 @@ src/
 
 El contenido nunca duplica lógica musical: una lección declara «escala X en tonalidad Y» o «frase Z», y el motor la genera para el instrumento activo (con la transposición correcta para el saxo).
 
+## Práctica primero: «Hoy», navegación y retomar
+
+- **Hoy** empieza con una tarjeta de práctica recomendada: objetivo, duración y un botón principal. En la primera visita propone *Responde a la banda con tres notas* (5 min, sin micrófono): eliges instrumento (y tipo de saxo) y el siguiente toque ya hace sonar el ejemplo. Si hay una práctica empezada, el botón es **Retomar práctica**. Misiones, XP, racha y logros quedan debajo; *Ver mi Camino* y *Ajustar mi nivel* son accesos secundarios.
+- **Navegación**: Hoy, Camino, Repertorio y Progreso siempre a la vista; el resto, a un toque desde **Más** (en el celular, una hoja con todas las secciones). La sección activa se marca con color, una barra y el nombre en el botón «Más».
+- **Ajustar mi nivel** reúne la prueba de nivel y el diagnóstico (cada uno dice en una línea qué obtienes), quién practica y la meta diaria. El diagnóstico se abre con tus respuestas anteriores y la prueba de nivel parte de lo que contestaste en él.
+- **Barra de práctica común** (Taller, sesión guiada, Repertorio, Canciones, Laboratorio, Los grandes): *Escuchar ejemplo · Tocar con la base · Detener · Tempo · Repetir fragmento*, siempre con los mismos nombres y en el mismo lugar. Mientras suena dice **Escucha** o **Tu turno**, el compás y el acorde actual y el siguiente; en el celular esos controles quedan fijos abajo. El mezclador, la tonalidad y las ayudas de lectura están en los controles secundarios.
+- **Retomar**: por instrumento se guardan el ejercicio, el fragmento, el tempo y la tonalidad (en la URL y en el progreso), así que «Retomar» abre lo mismo incluso tras recargar. Al cambiar de pantalla (o, en el celular, al salir de la app) el audio se detiene.
+- **Cierre de cada intento**: tras tocar con la base, qué lograste y qué hacer ahora (repetir, grabar una toma, escuchar la toma, guardar la frase) y una autoevaluación de un toque. En el ejercicio de pulso, si no se registra ningún golpe: *Repetir este patrón*, *Escuchar la cuenta* o *Bajar el tempo*. El micrófono se pide solo al elegir grabar o medir.
+- **Canciones ↔ Repertorio**: enlaces en ambos sentidos; cada frase del análisis tiene **Practicar estos compases**, que abre el tema con la base preparada en esos compases. Antes de reproducir se elige entre *Grabación de referencia*, *Ejercicio sobre la armonía* y *Tocar con la base*.
+
 ## Aprendizaje por niveles (estilo Duolingo)
 
 - **Camino** por instrumento con 6 niveles: 0 Primeros pasos (desde cero) → 1 Fundamentos → 2 Blues e improvisación → 3 Lenguaje del jazz → 4 Standards y bebop → 5 Maestría. Cada unidad tiene nodos *Aprende* (consejos + ejercicios fáciles), *Practica*, *Toca* (taller, acompañamiento, canción o estudio) y *Desafío* (3 vidas). Se puede **saltar con prueba** a cualquier unidad.

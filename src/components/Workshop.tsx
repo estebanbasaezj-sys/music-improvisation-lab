@@ -19,7 +19,8 @@ import { SoloPlayer, PlayerPhrase } from './SoloPlayer';
 import { BackingPanel } from './BackingPanel';
 import { Recorder } from './Recorder';
 import { KeySelect } from './ExerciseRunner';
-import { Segmented, soloRange, useNames, useTransposer } from './common';
+import { KEY_OPTIONS, Segmented, soloRange, useNames, useTransposer } from './common';
+import { useSpot } from '../practice/spot';
 import { AiSolo, aiErrorText, aiStats, askTeacher, getSample, progressionText, requestAiSolo } from '../ai/teacher';
 import { INSTRUMENT_LABEL } from '../theory/instruments';
 
@@ -45,8 +46,11 @@ export function Workshop(props: WorkshopProps) {
   const t = useTransposer();
   const names = useNames();
   const app = useAppState();
-  const [key, setKey] = useState(props.keyName);
+  const spot = useSpot();
+  const g = (k: string) => spot?.get(k) ?? null;
   const prog = props.progression ? progressionById(props.progression) : null;
+  const [key, setKeyState] = useState(() => { const k = g('tono'); return prog && k && KEY_OPTIONS.includes(k) ? k : props.keyName; });
+  const setKey = (k: string) => { setKeyState(k); spot?.set({ tono: k === props.keyName ? null : k }); };
   const blues = props.blues ?? (props.progression ? ['blues12', 'jazzBlues', 'minorBlues'].includes(props.progression) : false);
   const minor = props.minor ?? prog?.minor ?? false;
   const events = useMemo<ChordEvent[]>(() => {
@@ -57,21 +61,28 @@ export function Workshop(props: WorkshopProps) {
   const exNames = { note: t.noteName, chord: t.chordName };
   // pasaje: toda la progresión, bloques de 4 compases o un ii–V–I concreto
   const passages = useMemo(() => passageOptions(events, exNames), [events, t.instrument, t.sax, app.settings.noteNames]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [passageId, setPassageId] = useState('all');
+  const [passageId, setPassageIdState] = useState(() => g('pasaje') ?? 'all');
+  const setPassageId = (id: string) => { setPassageIdState(id); spot?.set({ pasaje: id === 'all' ? null : id, frag: null }); };
   const passage = passages.find((p) => p.id === passageId) ?? passages[0];
   const section = useMemo(() => (passage.from === 0 && passage.to >= events.reduce((s, e) => s + e.beats, 0) ? events : sliceEvents(events, passage.from, passage.to)), [events, passage.from, passage.to]);
-  useEffect(() => { if (!passages.some((p) => p.id === passageId)) setPassageId('all'); }, [passages, passageId]);
+  useEffect(() => { if (!passages.some((p) => p.id === passageId)) setPassageIdState('all'); }, [passages, passageId]);
   const kid = app.settings.profile === 'nino';
-  const [level, setLevel] = useState<Level>(kid ? 1 : 2);
+  const [level, setLevelState] = useState<Level>(() => { const n = Number(g('nivel')); return (n >= 1 && n <= 5 ? n : kid ? 1 : 2) as Level; });
+  const setLevel = (l: Level) => { setLevelState(l); spot?.set({ nivel: l }); };
   const firstWay = (): WayId => {
     const fromIdea = props.ideas?.map((i) => WAY_FROM_IDEA[i]).find((w) => wayAvailable(w, { events, level }).ok);
     return fromIdea ?? (blues ? 'blues' : 'modos');
   };
-  const [way, setWay] = useState<WayId>(firstWay);
-  const [seed, setSeed] = useState(1);
-  const [speed, setSpeed] = useState<Speed>('normal');
-  const [figure, setFigure] = useState<Figure | 'auto'>('auto');
-  const [tab, setTab] = useState<Tab>('ideas');
+  const [way, setWayState] = useState<WayId>(() => { const w = g('forma'); return w && WAYS.some((x) => x.id === w) ? (w as WayId) : firstWay(); });
+  const setWay = (w: WayId) => { setWayState(w); spot?.set({ forma: w, frag: null }); };
+  const [seed, setSeedState] = useState(() => Math.max(1, Number(g('v')) || 1));
+  const setSeed = (n: number) => { setSeedState(n); spot?.set({ v: n === 1 ? null : n, frag: null }); };
+  const [speed, setSpeedState] = useState<Speed>(() => { const v = g('vel'); return v === 'lenta' || v === 'rapida' ? v : 'normal'; });
+  const setSpeed = (v: Speed) => { setSpeedState(v); spot?.set({ vel: v === 'normal' ? null : v }); };
+  const [figure, setFigureState] = useState<Figure | 'auto'>(() => { const f = g('fig'); return f === 'q' || f === 'e' || f === 's' ? f : 'auto'; });
+  const setFigure = (f: Figure | 'auto') => { setFigureState(f); spot?.set({ fig: f === 'auto' ? null : f }); };
+  const [tab, setTabState] = useState<Tab>(() => { const t = g('paso'); return t === 'repite' || t === 'transforma' || t === 'turno' || t === 'ia' ? t : 'ideas'; });
+  const setTab = (v: Tab) => { setTabState(v); spot?.set({ paso: v === 'ideas' ? null : v, bpm: null, bpmBase: null, frag: null }); };
   const range = soloRange(t.instrument, app.settings.saxType);
   // si la forma elegida no está disponible en este nivel o pasaje, se usa la primera disponible
   const activeWay: WayId = wayAvailable(way, { events: section, level }).ok ? way : (WAYS.find((w) => wayAvailable(w.id, { events: section, level }).ok)?.id ?? 'modos');
@@ -127,9 +138,9 @@ export function Workshop(props: WorkshopProps) {
           {scaleChips.length > 0 && (
             <div className="wp-scales small"><span className="muted">Qué escala suena en cada acorde:</span> {scaleChips.map(([c, s]) => <span key={c} className="pill"><b>{c}</b> → {s}</span>)}</div>
           )}
-          <SoloPlayer key={playerKey} events={section} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={bpm} phrases={solo.phrases} title={solo.title} summary={solo.summary} source={source} scales={chosen} />
+          <SoloPlayer key={playerKey} events={section} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={bpm} phrases={solo.phrases} title={solo.title} summary={solo.summary} source={source} scales={chosen} keyControl={prog ? <KeySelect value={key} onChange={setKey} /> : undefined} />
           {w.great && <GreatPanel id={w.great} />}
-          <div className="cx-challenge"><b>🎯 Ahora tú:</b> {w.challenge} <span className="muted small">Pulsa «▶ Base (tocas tú)» y toca con esta forma; luego pasa a la siguiente con «Siguiente ▶».</span></div>
+          <div className="cx-challenge"><b>🎯 Ahora tú:</b> {w.challenge} <span className="muted small">Pulsa «🥁 Tocar con la base» y toca con esta forma; luego pasa a la siguiente con «Siguiente ▶».</span></div>
         </>
       )}
       {tab === 'repite' && solo && <SoloPlayer key={`r-${playerKey}`} events={section} notes={solo.notes} keyRoot={keyRoot} blues={blues} style={props.style} bpm={Math.min(bpm, 110)} phrases={solo.phrases} source={source} scales={chosen} guidedRepeat />}
@@ -244,7 +255,7 @@ function YourTurn(props: WorkshopProps & { events: ChordEvent[]; keyRoot: Note; 
           <span className={`timer ${left === 0 ? 'done' : ''}`}>⏱ {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} {left === 0 && '¡Tiempo!'}</span>
         </div>
       </div>
-      <BackingPanel events={props.events} style={props.style} bpm={props.bpm} display="guide" fixedScale={props.scale ? { scale: props.scale, root: props.keyRoot } : null} onPlayingChange={setRunning} />
+      <BackingPanel events={props.events} style={props.style} bpm={props.bpm} display="guide" fixedScale={props.scale ? { scale: props.scale, root: props.keyRoot } : null} onPlayingChange={setRunning} context={`Tu turno: ${challenges[ci]}`} />
       <details className="rec-inline" open><summary>● Grábate y escúchate</summary><Recorder context={`Tu turno: ${challenges[ci]}`} criteria={['Cumplí el reto', 'Las notas encajan con los acordes', 'Tempo estable', 'Frases con principio y final', 'Hay espacio']} /></details>
     </div>
   );

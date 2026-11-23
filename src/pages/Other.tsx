@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MODULES } from '../content/lessons';
 import { ModuleCard } from './Route';
 import { SONGS, songById } from '../content/songs';
@@ -7,7 +7,11 @@ import { analyze, keyInterval, parseChart, transposeEvents } from '../theory/pro
 import { parseNote, pc } from '../theory/notes';
 import { BackingPanel } from '../components/BackingPanel';
 import { KeySelect } from '../components/ExerciseRunner';
-import { Card, Segmented, StatusBadge, useNames, useTransposer } from '../components/common';
+import { Card, KEY_OPTIONS, Segmented, StatusBadge, useNames, useTransposer } from '../components/common';
+import { SpotProvider, fragWords, keyWords, useInitialParams, useSpot } from '../practice/spot';
+import { barsForAnalysis } from '../content/analysisBars';
+import { LINKS_CHECKED, TUNES } from '../content/repertoire';
+import { YouTubeEmbed } from '../components/YouTubeEmbed';
 import { update, useAppState } from '../progress/store';
 import { INSTRUMENT_LABEL, InstrumentId, concertKeyToWritten } from '../theory/instruments';
 import { Recording, deleteRecording, getAllRecordings, updateRecording } from '../recording/db';
@@ -27,33 +31,82 @@ export function TheoryPage() {
 }
 
 // ------------------- Canciones -------------------
+const tuneForSong = (songId: string) => TUNES.find((t) => t.songId === songId);
+
 export function SongsPage() {
   return (
     <div className="page">
       <h1>Canciones y standards</h1>
       <p className="lead">Progresiones armónicas, análisis y ejercicios por instrumento. Por derechos de autor no se incluyen melodías, letras ni partituras: apréndelas de grabaciones o de ediciones con licencia.</p>
       <div className="song-grid">
-        {SONGS.map((s) => (
-          <a key={s.id} className="song-card" href={`#/cancion/${s.id}`}>
-            <b>{s.title}</b>
-            <span className="muted small">{s.composer}</span>
-            <span className="small">{s.key} · {s.form} · {s.style}</span>
-            <span className="lvl">Nivel {s.level}</span>
-          </a>
-        ))}
+        {SONGS.map((s) => {
+          const tune = tuneForSong(s.id);
+          return (
+            <a key={s.id} className="song-card" href={`#/cancion/${s.id}`}>
+              <b>{s.title}</b>
+              <span className="muted small">{s.composer}</span>
+              <span className="small">{s.key} · {s.form} · {s.style}</span>
+              <span className="lvl">Nivel {s.level}</span>
+              {tune && <span className="pill">🎼 También en Repertorio</span>}
+            </a>
+          );
+        })}
       </div>
     </div>
   );
 }
 
+type SongMode = 'ref' | 'ejercicio' | 'base';
+const SONG_MODES: Record<SongMode, { icon: string; label: string }> = {
+  ref: { icon: '🎧', label: 'Grabación de referencia' },
+  ejercicio: { icon: '🎼', label: 'Ejercicio sobre la armonía' },
+  base: { icon: '🥁', label: 'Tocar con la base' },
+};
+
 export function SongPage({ id }: { id: string }) {
+  const song = songById(id);
+  const names = useNames();
+  return (
+    <SpotProvider describe={(p) => {
+      const m = (p.get('modo') as SongMode) || 'base';
+      const key = p.get('tono') ?? song?.key.replace(/m$/, '') ?? 'C';
+      return {
+        id: `cancion:${id}`,
+        title: `${song?.title ?? 'Canción'} · ${SONG_MODES[m].label}`,
+        detail: `${fragWords(p.get('c'), 'tema completo')} · ♩ = ${p.get('bpm') ?? '—'} · ${keyWords(names(parseNote(key)), song?.key.endsWith('m'))}`,
+      };
+    }}>
+      <SongBody id={id} />
+    </SpotProvider>
+  );
+}
+
+function SongBody({ id }: { id: string }) {
   const song = songById(id);
   const t = useTransposer();
   const names = useNames();
+  const spot = useSpot();
+  const params = useInitialParams();
+  const tune = song ? tuneForSong(song.id) : undefined;
   const minor = song?.key.endsWith('m') ?? false;
   const origKey = song ? parseNote(song.key.replace(/m$/, '')) : parseNote('C');
-  const [key, setKey] = useState(song ? song.key.replace(/m$/, '') : 'C');
-  const [bar, setBar] = useState<[number, number] | null>(null);
+  const [key, setKeyState] = useState(() => { const k = params.get('tono'); return k && KEY_OPTIONS.includes(k) ? k : song ? song.key.replace(/m$/, '') : 'C'; });
+  const [bar, setBarState] = useState<[number, number] | null>(() => {
+    const m = /^(\d+)-(\d+)$/.exec(params.get('c') ?? '');
+    if (!m || !song) return null;
+    const a = +m[1] - 1, b = +m[2] - 1;
+    return a >= 0 && b < song.bars && a <= b ? [a, b] : null;
+  });
+  const [mode, setModeState] = useState<SongMode>(() => { const m = params.get('modo'); return m === 'ref' || m === 'ejercicio' || m === 'base' ? m : 'base'; });
+  const practiceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!params.get('c') && !params.get('modo')) return;
+    const id = window.setTimeout(() => practiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const setKey = (k: string) => { setKeyState(k); spot?.set({ tono: song && k === song.key.replace(/m$/, '') ? null : k }); };
+  const setBar = (b: [number, number] | null) => { setBarState(b); spot?.set({ c: b ? `${b[0] + 1}-${b[1] + 1}` : null, frag: null }); };
+  const setMode = (m: SongMode) => { setModeState(m); spot?.set({ modo: m === 'base' ? null : m, bpm: null, bpmBase: null, frag: null }); };
   const events = useMemo(() => {
     if (!song) return [];
     const base = parseChart(song.chart);
@@ -61,42 +114,101 @@ export function SongPage({ id }: { id: string }) {
     return transposeEvents(base, iv);
   }, [song, key]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = useMemo(() => (bar ? events.filter((e) => e.bar >= bar[0] && e.bar <= bar[1]).map((e) => ({ ...e, bar: e.bar - bar[0] })) : events), [events, bar]);
-  if (!song) return <div className="page">Canción no encontrada.</div>;
+  if (!song) return <div className="page"><a href="#/canciones" className="back">← Canciones</a><p>Canción no encontrada.</p></div>;
   const inst: InstrumentId = t.instrument;
   const marks = analyze(events);
+  const style = song.style === 'blues' ? 'blues' : song.style;
+  const bpm = Math.min(song.tempo, song.style === 'ballad' ? 70 : 120);
+  const barValue = bar ? `${bar[0]}-${bar[1]}` : 'all';
+  const isSection = bar && song.sections.some((x) => x.fromBar === bar[0] && x.toBar === bar[1]);
+  const practiceBars = (r: [number, number]) => {
+    if (tune) {
+      window.location.hash = `/tema/${tune.id}?modo=base&c=${r[0] + 1}-${r[1] + 1}${key !== song.key.replace(/m$/, '') ? `&tono=${encodeURIComponent(key)}` : ''}`;
+      return;
+    }
+    setBar(r);
+    setMode('base');
+    setTimeout(() => practiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+  const keyControl = <KeySelect value={key} onChange={setKey} />;
+  const title = `${song.title}${bar ? ` (compases ${bar[0] + 1}–${bar[1] + 1})` : ''}`;
   return (
     <div className="page">
-      <a href="#/canciones" className="back">← Canciones</a>
+      <div className="row between wrap">
+        <a href="#/canciones" className="back">← Canciones</a>
+        {tune && <a className="link-chip" href={`#/tema/${tune.id}`}>🎼 Tocar en Repertorio (grabación, melodía y base)</a>}
+      </div>
       <h1>{song.title}</h1>
       <p className="lead">{song.composer} · {song.form} · tonalidad original {song.key}{t.isSax && ` (escrito ${names(concertKeyToWritten(origKey, t.sax, minor))}${minor ? 'm' : ''})`} · tempo sugerido {song.tempo}</p>
       <p>{song.overview}</p>
       {song.versionNote && <p className="warn">ℹ {song.versionNote}</p>}
       <Card title="Análisis">
-        <ul>{song.analysis.map((a) => <li key={a}>{a}</li>)}</ul>
-        <p className="muted small">Detección automática: {marks.filter((m) => m.label.startsWith('ii')).length} ii-V encontrados.</p>
+        <ul className="analysis-list">
+          {song.analysis.map((a) => {
+            const r = barsForAnalysis(a, song);
+            return (
+              <li key={a}>
+                <span>{a}</span>
+                {r && <button className="btn sm" onClick={() => practiceBars(r)}>▶ Practicar estos compases <small>(c. {r[0] + 1}–{r[1] + 1})</small></button>}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="muted small">Detección automática: {marks.filter((m) => m.label.startsWith('ii')).length} ii-V encontrados. {tune ? '«Practicar estos compases» abre el tema en Repertorio con la base preparada en esos compases.' : '«Practicar estos compases» prepara la base en esos compases, aquí abajo.'}</p>
       </Card>
-      <Card title="Practicar con acompañamiento">
-        <div className="row gap wrap">
-          <KeySelect value={key} onChange={setKey} />
-          <label className="field inline"><span>Sección</span>
-            <select value={bar ? `${bar[0]}-${bar[1]}` : 'all'} onChange={(e) => setBar(e.target.value === 'all' ? null : (e.target.value.split('-').map(Number) as [number, number]))}>
-              <option value="all">Tema completo</option>
+
+      <div ref={practiceRef} />
+      <h2 className="sec-title">¿Qué quieres escuchar?</h2>
+      <div className="mode-cards" role="radiogroup" aria-label="Qué escuchar">
+        {(Object.keys(SONG_MODES) as SongMode[]).map((m) => (
+          <button key={m} role="radio" aria-checked={mode === m} className={`mode-card ${mode === m ? 'on' : ''}`} onClick={() => setMode(m)}>
+            <span className="mc-ico" aria-hidden="true">{SONG_MODES[m].icon}</span>
+            <b>{SONG_MODES[m].label}{mode === m && <span className="mc-check"> ✓</span>}</b>
+            <small>{m === 'ref' ? (tune ? `La grabación original de ${tune.recording.artist} (${tune.recording.year}).` : 'Dónde escuchar el tema original (la app no reproduce grabaciones con derechos).') : m === 'ejercicio' ? 'Solos de ejemplo y frases creados por la app sobre estos acordes (no es la melodía original).' : 'Solo el acompañamiento: tocas tú. Sin micrófono.'}</small>
+          </button>
+        ))}
+      </div>
+      {mode !== 'ref' && (
+        <div className="tune-controls">
+          {keyControl}
+          <label className="field inline"><span>Compases</span>
+            <select value={barValue} onChange={(e) => setBar(e.target.value === 'all' ? null : (e.target.value.split('-').map(Number) as [number, number]))}>
+              <option value="all">Tema completo ({song.bars} compases)</option>
               {song.sections.map((s, i) => <option key={i} value={`${s.fromBar}-${s.toBar}`}>{s.label} (c. {s.fromBar + 1}–{s.toBar + 1})</option>)}
+              {bar && !isSection && <option value={barValue}>Compases {bar[0] + 1}–{bar[1] + 1}</option>}
             </select>
           </label>
         </div>
-        <BackingPanel events={shown} style={song.style === 'blues' ? 'blues' : song.style} bpm={Math.min(song.tempo, song.style === 'ballad' ? 70 : 120)} showAnalysis={!bar} sections={bar ? undefined : song.sections} display="guide" />
-      </Card>
-      <Card title="Ideas de improvisación sobre este tema">
-        <Workshop key={key + (bar ? bar.join('-') : '')} events={shown} originalKey={song.key} keyName={key} title={`${song.title}${bar ? ` (compases ${bar[0] + 1}–${bar[1] + 1})` : ''}`} style={song.style === 'blues' ? 'blues' : song.style} bpm={Math.min(song.tempo, song.style === 'ballad' ? 70 : 120)} minor={minor} blues={song.style === 'blues' || song.id.includes('blues') || song.id === 'blue-monk'} prompts={song.tasks[inst]} />
-      </Card>
+      )}
+      {mode === 'ref' && (
+        <Card title="🎧 Grabación de referencia">
+          {tune ? (
+            <>
+              <p className="small">{tune.recording.artist} — <i>{tune.recording.album}</i> ({tune.recording.year}).</p>
+              <YouTubeEmbed key={tune.id} videos={tune.recording.youtube} query={`${tune.title} ${tune.recording.artist}`} checked={LINKS_CHECKED} />
+            </>
+          ) : (
+            <p className="small">Busca «{song.externalSearch}» en tu plataforma de música o vídeo. La app no descarga ni extrae audio de vídeos.</p>
+          )}
+          <div className="row gap wrap"><button className="btn" onClick={() => setMode('base')}>🥁 Ahora, tocar con la base</button></div>
+        </Card>
+      )}
+      {mode === 'base' && (
+        <Card title="🥁 Tocar con la base">
+          <BackingPanel key={`${key}-${barValue}`} events={shown} style={style} bpm={bpm} showAnalysis={!bar} sections={bar ? undefined : song.sections} display="guide" keyControl={keyControl} context={title} />
+        </Card>
+      )}
+      {mode === 'ejercicio' && (
+        <Card title="🎼 Ejercicio sobre la armonía">
+          <Workshop key={key + barValue} events={shown} originalKey={song.key} keyName={key} title={title} style={style} bpm={bpm} minor={minor} blues={song.style === 'blues' || song.id.includes('blues') || song.id === 'blue-monk'} prompts={song.tasks[inst]} />
+        </Card>
+      )}
       <Card title={`Tu experiencia en ${INSTRUMENT_LABEL[inst].toLowerCase()}`}>
         <ol>{song.tasks[inst].map((x) => <li key={x}>{x}</li>)}</ol>
         <p className="muted small">El mismo tema genera tres experiencias: cambia de instrumento arriba para ver las tareas de {(['sax', 'guitar', 'piano'] as InstrumentId[]).filter((i) => i !== inst).map((i) => INSTRUMENT_LABEL[i].toLowerCase()).join(' y ')}.</p>
       </Card>
       <Card title="Recursos externos">
         <p className="small">{song.practiceWith}</p>
-        <p className="small">Para escuchar grabaciones de referencia, busca «{song.externalSearch}» en tu plataforma de música o vídeo. La app no descarga ni extrae audio de vídeos.</p>
         <p className="small">Cuando domines las secciones aquí, practica la forma completa (intro, choruses, final) en <a href="https://www.irealpro.com/" target="_blank" rel="noreferrer">iReal Pro</a> o similar.</p>
       </Card>
       <span className="hidden">{pc(origKey)}</span>

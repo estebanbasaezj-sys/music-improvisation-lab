@@ -9,7 +9,9 @@ import { ChordDiagram } from '../instruments/ChordDiagram';
 import { InstrumentView, ViewNote } from './InstrumentView';
 import { chordViewNotes } from './ChordsView';
 import { Segmented, playMidi, useTransposer } from './common';
-import { LayerToggles, useOnStopAll } from './Mixer';
+import { useOnStopAll } from './Mixer';
+import { PlayMode, PracticeBar, barFragments, parseFrag } from '../practice/PracticeBar';
+import { useSpot } from '../practice/spot';
 
 export type Display = 'chords' | 'guide' | 'scales' | 'arpeggios';
 
@@ -24,59 +26,93 @@ interface Props {
   showAnalysis?: boolean;
   sections?: { label: string; fromBar: number; toBar: number }[];
   onPlayingChange?: (p: boolean) => void;
+  /** selector de tonalidad, para los controles secundarios */
+  keyControl?: React.ReactNode;
+  /** de qué se trata (para el cierre del intento y la grabación) */
+  context?: string;
+  /** ejemplo opcional que suena con «Escuchar ejemplo» */
+  exampleNotes?: { beat: number; dur: number; midi: number }[];
 }
 
-export function BackingPanel({ events, style: style0, bpm: bpm0, display: display0 = 'chords', fixedScale, melody, showAnalysis, sections, onPlayingChange }: Props) {
+export function BackingPanel({ events: allEvents, style: style0, bpm: bpm0, display: display0 = 'chords', fixedScale, melody, showAnalysis, sections, onPlayingChange, keyControl, context, exampleNotes }: Props) {
   const t = useTransposer();
+  const spot = useSpot();
+  const totalBars = useMemo(() => Math.max(1, Math.ceil(allEvents.reduce((s, e) => s + e.beats, 0) / 4 - 1e-9)), [allEvents]);
+  const fragments = useMemo(() => barFragments(totalBars, sections), [totalBars, sections]);
+  const savedBpm = Number(spot?.get('bpm'));
   const [style, setStyle] = useState<BackingStyle>(style0);
-  const [bpm, setBpm] = useState(bpm0);
+  const [bpm, setBpmState] = useState(() => (spot?.get('bpmBase') === String(bpm0) && savedBpm >= 40 && savedBpm <= 260 ? savedBpm : bpm0));
+  const [frag, setFrag] = useState(() => { const f = spot?.get('frag'); return f && fragments.some((x) => x.id === f) ? f : 'all'; });
   const [display, setDisplay] = useState<Display>(display0);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState<PlayMode>(null);
   const [cur, setCur] = useState(0);
   const [beat, setBeat] = useState<number | null>(null);
   const [chorus, setChorus] = useState(0);
+  const [beats, setBeats] = useState(0);
   const [countIn, setCountIn] = useState(true);
   const [concert, setConcert] = useState(false);
   const player = useRef<BackingPlayer | null>(null);
+  const first = useRef(true);
+  const range = parseFrag(frag, totalBars);
+  const offsetIdx = range ? allEvents.findIndex((e) => e.bar >= range[0] - 1) : 0;
+  const events = useMemo(() => (range ? allEvents.filter((e) => e.bar >= range[0] - 1 && e.bar <= range[1] - 1).map((e) => ({ ...e, bar: e.bar - (range[0] - 1) })) : allEvents), [allEvents, frag]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { setStyle(style0); setBpm(bpm0); }, [style0, bpm0]);
-  useEffect(() => () => player.current?.stop(), []);
-  useOnStopAll(() => { setPlaying(false); setBeat(null); onPlayingChange?.(false); });
-  // si cambia la progresión (tonalidad, estilo) mientras suena, reiniciar
   useEffect(() => {
-    if (playing) start();
+    if (first.current) { first.current = false; return; }
+    setStyle(style0); setBpmState(bpm0);
+  }, [style0, bpm0]);
+  useEffect(() => () => player.current?.stop(), []);
+  useOnStopAll(() => { setPlaying(null); setBeat(null); onPlayingChange?.(false); });
+  // si cambia la progresión (tonalidad, estilo o fragmento) mientras suena, reiniciar
+  useEffect(() => {
+    if (playing) void start(playing === 'example' ? 'example' : 'base');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, style]);
 
-  const start = async () => {
-    player.current?.stop();
+  const start = async (m: 'base' | 'example' = 'base') => {
+    player.current?.stop(true);
+    spot?.started();
+    setBeats(0);
+    setBeat(-5);
+    const withMelody = m === 'example' && !!exampleNotes?.length;
     const p = new BackingPlayer({
-      style, bpm, countIn, metronome: false, label: `Base para improvisar · ${STYLE_LABEL[style]}`,
+      style, bpm, countIn, metronome: false, label: `${withMelody ? 'Ejemplo' : 'Tocar con la base'} · ${STYLE_LABEL[style]}`,
       melodyVoice: t.instrument === 'guitar' ? 'guitar' : t.instrument === 'piano' ? 'piano' : 'sax',
-      onChord: (i) => setCur(i),
-      onStop: () => { setPlaying(false); setBeat(null); onPlayingChange?.(false); },
-      onBeat: (b, c) => { setBeat(b); setChorus(c); },
+      mute: { piano: t.instrument === 'piano' && !withMelody, guitar: t.instrument === 'guitar' && !withMelody },
+      onChord: (i) => setCur(i + offsetIdx),
+      onStop: () => { setPlaying(null); setBeat(null); onPlayingChange?.(false); },
+      onBeat: (b, c) => { setBeat(b); setChorus(c); if (b >= 0 && !withMelody) setBeats((x) => x + 1); },
     });
     player.current = p;
-    await p.start(events, melody);
-    setPlaying(true);
+    const mel = withMelody ? exampleNotes!.filter((n) => !range || (n.beat >= (range[0] - 1) * 4 && n.beat < range[1] * 4)).map((n) => ({ ...n, beat: n.beat - (range ? (range[0] - 1) * 4 : 0) })) : melody;
+    await p.start(events, mel);
+    setPlaying(withMelody ? 'example' : 'base');
     onPlayingChange?.(true);
   };
   const stop = () => {
     player.current?.stop();
-    setPlaying(false);
+    setPlaying(null);
     setBeat(null);
     onPlayingChange?.(false);
+  };
+  const setBpm = (n: number) => {
+    setBpmState(n);
+    player.current?.setTempo(n);
+    spot?.set(n === bpm0 ? { bpm: null, bpmBase: null } : { bpm: n, bpmBase: bpm0 });
+  };
+  const changeFrag = (id: string) => {
+    setFrag(id);
+    spot?.set({ frag: id === 'all' ? null : id });
   };
 
   const bars = useMemo(() => {
     const out: { idx: number; ev: ChordEvent }[][] = [];
-    events.forEach((ev, idx) => (out[ev.bar] ??= []).push({ idx, ev }));
+    allEvents.forEach((ev, idx) => (out[ev.bar] ??= []).push({ idx, ev }));
     return out;
-  }, [events]);
-  const marks = useMemo(() => (showAnalysis ? analyze(events) : []), [events, showAnalysis]);
-  const guide = useMemo(() => guideToneLines(events.map((e) => e.chord)), [events]);
-  const c = events[cur]?.chord ?? events[0].chord;
+  }, [allEvents]);
+  const marks = useMemo(() => (showAnalysis ? analyze(allEvents) : []), [allEvents, showAnalysis]);
+  const guide = useMemo(() => guideToneLines(allEvents.map((e) => e.chord)), [allEvents]);
+  const c = allEvents[cur]?.chord ?? allEvents[0].chord;
 
   const nameOf = (ch: Chord) => (concert || !t.isSax ? ch.root && chordName(ch) : t.chordName(ch));
   const chordName = (ch: Chord) => {
@@ -122,28 +158,52 @@ export function BackingPanel({ events, style: style0, bpm: bpm0, display: displa
 
   return (
     <div className="backing">
-      <div className="transport">
-        <button className={`btn play ${playing ? 'stop' : 'primary'}`} onClick={playing ? stop : start}>{playing ? '■ Parar' : '▶ Acompañamiento'}</button>
-        <label className="tempo">♩= {bpm}<input type="range" min={40} max={260} value={bpm} onChange={(e) => { setBpm(+e.target.value); player.current?.setTempo(+e.target.value); }} /></label>
-        <select value={style} onChange={(e) => setStyle(e.target.value as BackingStyle)} aria-label="Estilo">
-          {Object.entries(STYLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <div className="beats" aria-label="pulso">
-          {[0, 1, 2, 3].map((b) => <span key={b} className={`beat ${beat !== null && ((beat % 4) + 4) % 4 === b ? (beat < 0 ? 'count' : 'on') : ''}`} />)}
-          {playing && <span className="muted small">{beat !== null && beat < 0 ? 'cuenta…' : `chorus ${chorus || 1}`}</span>}
-        </div>
-      </div>
-      <div className="mixer">
-        <LayerToggles hide={melody && melody.length > 0 ? [] : ['melody']} />
-        <label className="toggle"><input type="checkbox" checked={countIn} onChange={() => setCountIn(!countIn)} />Cuenta 4</label>
-        {t.isSax && <label className="toggle"><input type="checkbox" checked={concert} onChange={() => setConcert(!concert)} />Cifrado de concierto</label>}
-      </div>
+      <PracticeBar
+        playing={playing}
+        onExample={exampleNotes?.length ? () => start('example') : undefined}
+        onBase={() => start('base')}
+        onStop={stop}
+        bpm={bpm}
+        onBpm={setBpm}
+        max={260}
+        fragments={fragments}
+        frag={frag}
+        onFrag={changeFrag}
+        status={playing ? {
+          turn: playing === 'example' ? 'escucha' : 'tu',
+          bar: beat !== null && beat >= 0 ? (range ? range[0] - 1 : 0) + Math.floor(beat / 4) + 1 : null,
+          bars: totalBars,
+          count: beat !== null && beat < 0 ? beat + 5 : null,
+          chord: allEvents[cur] && nameOf(allEvents[cur].chord),
+          next: events.length ? nameOf(allEvents[offsetIdx + ((cur - offsetIdx + 1) % events.length)]?.chord ?? allEvents[cur].chord) : undefined,
+        } : null}
+        hideLayers={exampleNotes?.length ? [] : ['melody']}
+        keyControl={(keyControl || t.isSax) && (
+          <div className="row gap wrap">
+            {keyControl}
+            {t.isSax && <label className="toggle"><input type="checkbox" checked={concert} onChange={() => setConcert(!concert)} />Cifrado de concierto (como lo lee el pianista)</label>}
+          </div>
+        )}
+        readingAids={<Segmented size="sm" value={display} onChange={setDisplay} options={[{ value: 'chords', label: 'Acordes' }, { value: 'arpeggios', label: 'Arpegios' }, { value: 'guide', label: 'Notas guía' }, { value: 'scales', label: 'Escalas' }]} />}
+        more={
+          <div className="row gap wrap">
+            <label className="field inline"><span>Estilo</span>
+              <select value={style} onChange={(e) => setStyle(e.target.value as BackingStyle)} aria-label="Estilo">
+                {Object.entries(STYLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </label>
+            <label className="toggle"><input type="checkbox" checked={countIn} onChange={() => setCountIn(!countIn)} />Cuenta de 4 antes de empezar</label>
+            {playing && <span className="muted small">Vuelta {chorus || 1}</span>}
+          </div>
+        }
+        attempt={{ context: context ?? 'Tocar con la base', beatsPlayed: beats }}
+      />
       {t.isSax && <div className="muted small">Cifrado {concert ? 'de concierto (como lo lee el pianista)' : `transpuesto: ${t.label}`}. El audio suena en concierto.</div>}
       <div className="chart">
         {bars.map((bar, bi) => {
           const sec = sections?.find((s) => s.fromBar === bi);
           return (
-            <div key={bi} className={`bar ${bar.some((x) => x.idx === cur) && playing ? 'cur' : ''}`}>
+            <div key={bi} className={`bar ${bar.some((x) => x.idx === cur) && playing ? 'cur' : ''} ${range && (bi < range[0] - 1 || bi > range[1] - 1) ? 'out' : ''}`}>
               {sec && <span className="sec">{sec.label}</span>}
               {bar.map(({ idx, ev }) => (
                 <button key={idx} className={`cell ${idx === cur ? 'on' : ''}`} onClick={() => { setCur(idx); playMidi(t.instrument === 'sax' ? 'piano' : t.instrument, clickMidis(ev.chord, t.instrument === 'guitar'), 1.2); }}>

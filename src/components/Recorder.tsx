@@ -6,7 +6,7 @@ import { isEmbedded, micErrorText } from '../recording/pitch';
 
 export function Recorder({ context, criteria, onSaved }: { context: string; criteria?: string[]; onSaved?: () => void }) {
   const t = useTransposer();
-  const [state, setState] = useState<'idle' | 'rec' | 'review'>('idle');
+  const [state, setState] = useState<'idle' | 'rec' | 'review' | 'self'>('idle');
   const [err, setErr] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [secs, setSecs] = useState(0);
@@ -64,7 +64,8 @@ export function Recorder({ context, criteria, onSaved }: { context: string; crit
       {err && <p className="warn">{err}</p>}
       {state === 'idle' && (
         <div className="row gap wrap">
-          <button className="btn rec" onClick={start}>● Grabar</button>
+          <button className="btn rec" onClick={start} title="Se pide permiso de micrófono al pulsar">● Grabar</button>
+          {criteria && <button className="btn" onClick={() => { setState('self'); setSaved(false); }}>✍ Autoevaluarme sin grabar</button>}
           {(err || isEmbedded()) && (
             <label className="btn">📤 Subir grabación<input type="file" accept="audio/*" capture="user" hidden onChange={(e) => {
               const f = e.target.files?.[0];
@@ -80,6 +81,26 @@ export function Recorder({ context, criteria, onSaved }: { context: string; crit
       )}
       {state === 'rec' && (
         <div className="row gap"><button className="btn stop" onClick={stop}>■ Detener</button><span className="rec-dot" /> {secs}s <span className="muted small">Consejo: usa auriculares para que el micrófono capte solo tu instrumento.</span></div>
+      )}
+      {state === 'self' && criteria && (
+        <div className="self-eval">
+          <p className="small"><b>Autoevaluación</b> (sin grabación): piensa en lo que acabas de tocar y valora de 1 a 5.</p>
+          {criteria.map((c) => (
+            <div key={c} className="crit">
+              <span>{c}</span>
+              <div className="stars" role="radiogroup" aria-label={c}>{[1, 2, 3, 4, 5].map((n) => <button key={n} role="radio" aria-checked={evals[c] === n} className={evals[c] >= n ? 'on' : ''} onClick={() => setEvals({ ...evals, [c]: n })}>{n}</button>)}</div>
+            </div>
+          ))}
+          <div className="row gap">
+            {!saved ? <button className="btn primary" disabled={!Object.keys(evals).length} onClick={() => {
+              const vals = Object.values(evals);
+              addEvidence(t.instrument, 'improvisacion', { source: 'autoevaluacion', value: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length / 5) * 100), note: `Autoevaluación: ${context}` });
+              setSaved(true);
+              onSaved?.();
+            }}>Registrar mi autoevaluación</button> : <span className="ok">✓ Registrada en tu progreso</span>}
+            <button className="btn" onClick={() => setState('idle')}>Volver</button>
+          </div>
+        </div>
       )}
       {state === 'review' && url && (
         <div>

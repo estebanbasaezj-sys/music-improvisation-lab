@@ -46,8 +46,10 @@ export function RhythmStaff({ pattern }: { pattern: string[] }) {
   return <div className="rhythm-staff"><TimeStaff notes={notes} chords={[]} totalBeats={Math.max(4, beats)} showLabels={false} /></div>;
 }
 
-export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', hideStaff }: { pattern: string[]; bpm: number; swing?: boolean; onResult: (ok: boolean, detail: string) => void; initialMode?: 'pad' | 'mic'; hideStaff?: boolean }) {
-  const [phase, setPhase] = useState<'idle' | 'count' | 'tap' | 'done'>('idle');
+export function RhythmTap({ pattern, bpm: bpm0, swing, onResult, initialMode = 'pad', hideStaff, onSkip }: { pattern: string[]; bpm: number; swing?: boolean; onResult: (ok: boolean, detail: string) => void; initialMode?: 'pad' | 'mic'; hideStaff?: boolean; onSkip?: () => void }) {
+  const [phase, setPhase] = useState<'idle' | 'count' | 'tap' | 'done' | 'empty'>('idle');
+  // el tempo se puede bajar si el intento no registró golpes
+  const [bpm, setBpm] = useState(bpm0);
   const [taps, setTaps] = useState<number[]>([]);
   const [beatNow, setBeatNow] = useState(-1);
   const [mode, setMode] = useState<'pad' | 'mic'>(initialMode);
@@ -109,6 +111,15 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
     const now = Tone.now() + 0.2;
     exp.forEach((o) => triggerDrum('stick', now + o * spb, 0.9));
   };
+  /** la cuenta de 4 seguida del ritmo, para oír cuándo entrar */
+  const listenCount = async () => {
+    await ensureAudio();
+    await waitSamples(3000);
+    cancelScheduled();
+    const now = Tone.now() + 0.2;
+    [0, 1, 2, 3].forEach((b) => click(now + b * spb, b === 0));
+    exp.forEach((o) => triggerDrum('stick', now + (4 + o) * spb, 0.9));
+  };
   const start = async () => {
     await ensureAudio();
     await waitSamples(3000);
@@ -142,8 +153,10 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
     triggerDrum('stick', Tone.now(), 0.5);
   };
   const finish = () => {
-    setPhase('done');
     setHeard(0);
+    // sin ningún golpe no hay nada que evaluar: se ofrece repetir, escuchar la cuenta o ir más lento
+    if (!tapsRef.current.length) { setPhase('empty'); return; }
+    setPhase('done');
     const tol = bpm < 90 ? 0.22 : 0.18;
     const r = scoreRhythm(exp, tapsRef.current, tol);
     const ms = Math.round(r.meanErr * spb * 1000);
@@ -168,9 +181,20 @@ export function RhythmTap({ pattern, bpm, swing, onResult, initialMode = 'pad', 
       {micErr && <p className="warn small">{micErr} Puedes seguir con el botón.</p>}
       <div className="row gap wrap center">
         <button className="btn" onClick={listen} disabled={live}>🔊 Escuchar</button>
-        {!live && <button className="btn primary" onClick={start} disabled={mode === 'mic' && mic !== 'ready'}>{phase === 'done' ? 'Repetir' : '▶ Empezar (4 clics de cuenta)'}</button>}
+        {!live && phase !== 'empty' && <button className="btn primary" onClick={start} disabled={mode === 'mic' && mic !== 'ready'}>{phase === 'done' ? 'Repetir' : `▶ Empezar (4 clics de cuenta) · ♩ = ${bpm}`}</button>}
         <label className="toggle"><input type="checkbox" checked={pulse} disabled={live} onChange={() => setPulse(!pulse)} />Pulso durante el ritmo</label>
       </div>
+      {phase === 'empty' && (
+        <div className="attempt" role="status">
+          <p className="at-head"><b>No registramos ningún golpe.</b> {mode === 'mic' ? 'Puede que el micrófono no te oiga: aplaude más fuerte o acércate.' : 'Toca el botón grande (o la barra espaciadora) en cada nota del ritmo, justo después de la cuenta.'}</p>
+          <div className="at-actions">
+            <button className="btn primary" onClick={start} disabled={mode === 'mic' && mic !== 'ready'}>🔁 Repetir este patrón</button>
+            <button className="btn" onClick={listenCount}>🔊 Escuchar la cuenta</button>
+            <button className="btn" disabled={bpm <= 50} onClick={() => setBpm(Math.max(50, Math.round((bpm * 0.8) / 5) * 5))}>🐢 Bajar el tempo (♩ = {Math.max(50, Math.round((bpm * 0.8) / 5) * 5)})</button>
+          </div>
+          {onSkip && <button className="link small" onClick={onSkip}>Ahora no puedo tocar: seguir sin medir</button>}
+        </div>
+      )}
       {mode === 'pad' ? (
         <button className={`tap-pad ${live ? 'live' : ''}`} onPointerDown={tap}>
           {live ? <span key={beatNow} className={`tap-count ${counting ? 'count' : ''}`}>{counting ? `Cuenta ${bigCount}` : `Tiempo ${bigCount}`}</span> : 'TOCA AQUÍ'}

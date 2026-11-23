@@ -16,7 +16,20 @@ export function DiagnosticPage() {
   const s = useAppState();
   const inst = s.instrument;
   const [step, setStep] = useState<'q' | number | 'end'>('q');
-  const [ans, setAns] = useState<Record<string, string | string[]>>({});
+  // reutiliza lo ya respondido: el diagnóstico anterior o, si no hay, las respuestas de la prueba de nivel
+  const [ans, setAns] = useState<Record<string, string | string[]>>(() => {
+    const d = s.progress[inst].diagnostic;
+    if (d) return { experience: d.experience, styles: d.styles, reading: d.reading, improvExperience: d.improvExperience, harmony: d.harmony, goals: d.goals, minutesPerDay: String(d.minutesPerDay) };
+    const pa = s.path[inst].answers;
+    if (!pa) return {};
+    const opt = (id: string, i: number | undefined) => (i === undefined ? undefined : QUESTIONS.find((q) => q.id === id)?.options?.[i]);
+    const out: Record<string, string> = {};
+    const r = opt('reading', pa.read); if (r) out.reading = r;
+    const h = opt('harmony', pa.theory === undefined ? undefined : [0, 0, 2, 3][pa.theory]); if (h) out.harmony = h;
+    const im = opt('improvExperience', pa.plays === undefined ? undefined : pa.plays >= 3 ? 2 : pa.plays >= 2 ? 1 : 0); if (im) out.improvExperience = im;
+    return out;
+  });
+  const reused = !!s.progress[inst].diagnostic || !!s.path[inst].answers;
   const tests = TESTS[inst];
 
   const saveQuestionnaire = () => {
@@ -36,6 +49,7 @@ export function DiagnosticPage() {
       <div className="page">
         <h1>Diagnóstico · {INSTRUMENT_LABEL[inst]}</h1>
         <p className="lead">Cuestionario breve y {tests.length} pruebas musicales. Cada instrumento se diagnostica por separado. Nada queda bloqueado por el resultado.</p>
+        {reused && <p className="hint small">Ya completamos lo que respondiste antes. Cambia solo lo que quieras y continúa.</p>}
         <Card>
           {QUESTIONS.map((q) => (
             <div key={q.id} className="dq">

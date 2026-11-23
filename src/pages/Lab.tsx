@@ -10,14 +10,37 @@ import { ChordsView } from '../components/ChordsView';
 import { KeySelect, PhrasePlayer } from '../components/ExerciseRunner';
 import { PitchCheck } from '../components/PitchCheck';
 import { Card, Segmented, useNames } from '../components/common';
+import { SpotProvider, fragWords, useInitialParams, useSpot } from '../practice/spot';
+import { replaceParams } from '../router';
+import { WAYS } from '../theory/ways';
 import { PHRASES } from '../content/phrases';
 import { Workshop } from '../components/Workshop';
 import { CadenceExplorer } from '../components/CadenceExplorer';
 
 type Tab = 'cadencias' | 'taller' | 'escalas' | 'acordes' | 'progresiones' | 'frases' | 'metronomo' | 'afinador';
 
+const TABS: Tab[] = ['cadencias', 'taller', 'escalas', 'acordes', 'progresiones', 'frases', 'metronomo', 'afinador'];
+const TAB_TITLE: Record<Tab, string> = { cadencias: 'Explorar una cadencia', taller: 'Taller de improvisación', escalas: 'Escalas y modos', acordes: 'Acordes', progresiones: 'Progresiones y acompañamiento', frases: 'Frases', metronomo: 'Metrónomo', afinador: 'Detector de notas' };
+
 export function Lab() {
-  const [tab, setTab] = useState<Tab>('cadencias');
+  const names = useNames();
+  return (
+    <SpotProvider describe={(p) => {
+      const tab = (TABS.includes(p.get('tab') as Tab) ? p.get('tab') : 'cadencias') as Tab;
+      const prog = p.get('prog') ?? (tab === 'taller' ? 'blues12' : null);
+      const way = p.get('forma') ? WAYS.find((w) => w.id === p.get('forma')) : null;
+      const bits = [prog && tab === 'taller' ? progressionById(prog).name : null, way ? way.name : null, p.get('nivel') ? `nivel ${p.get('nivel')}` : null, p.get('tono') ? names(parseNote(p.get('tono')!)) : null, p.get('bpm') ? `♩ = ${p.get('bpm')}` : null, p.get('frag') ? fragWords(p.get('frag')) : null].filter(Boolean);
+      return { id: `lab:${tab}`, title: `Laboratorio · ${TAB_TITLE[tab]}`, detail: bits.join(' · ') || 'Donde lo dejaste' };
+    }}>
+      <LabBody />
+    </SpotProvider>
+  );
+}
+
+function LabBody() {
+  const params = useInitialParams();
+  const [tab, setTabState] = useState<Tab>(() => (TABS.includes(params.get('tab') as Tab) ? (params.get('tab') as Tab) : 'cadencias'));
+  const setTab = (t: Tab) => { setTabState(t); replaceParams({ tab: t === 'cadencias' ? null : t, prog: null, estilo: null, tono: null, pasaje: null, nivel: null, forma: null, v: null, vel: null, fig: null, paso: null, bpm: null, bpmBase: null, frag: null }); };
   return (
     <div className="page">
       <h1>Laboratorio</h1>
@@ -38,8 +61,12 @@ export function Lab() {
 }
 
 function WorkshopLab() {
-  const [prog, setProg] = useState('blues12');
-  const [style, setStyle] = useState<BackingStyle>('swing');
+  const params = useInitialParams();
+  const spot = useSpot();
+  const [prog, setProgState] = useState(() => { const p = params.get('prog'); return p && PROGRESSIONS.some((x) => x.id === p) ? p : 'blues12'; });
+  const [style, setStyleState] = useState<BackingStyle>(() => { const e = params.get('estilo'); return e && e in STYLE_LABEL ? (e as BackingStyle) : 'swing'; });
+  const setProg = (p: string) => { setProgState(p); spot?.set({ prog: p, tono: null, pasaje: null, forma: null, v: null, bpm: null, bpmBase: null, frag: null }); };
+  const setStyle = (e: BackingStyle) => { setStyleState(e); spot?.set({ estilo: e === 'swing' ? null : e }); };
   const p = progressionById(prog);
   return (
     <Card>
